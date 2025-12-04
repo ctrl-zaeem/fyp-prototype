@@ -81,7 +81,7 @@ def translate_text(text: str, target_lang: str) -> str:
         prompt = (
             "You are a friendly conversational assistant that responds naturally in Urdu (اردو). "
             "Automatically detect the source language of the user's input. "
-            "Generate a natural, conversational reply in Urdu script (Nastaliq/Perso-Arabic), NOT Hindi/Devanagari script.\n\n"
+            "Generate a natural, conversational reply in Urdu script (Nastaliq/Perso-Arabic) or Roman Urdu Script. If the user demands another language, respond in that language.\n\n"
             "Rules:\n"
             "- If the input is a question, provide an appropriate answer in Urdu (e.g., 'What is your name?' → 'میرا نام زعیم ہے').\n"
             "- If the input is a greeting, respond with a greeting in Urdu.\n"
@@ -99,7 +99,7 @@ def translate_text(text: str, target_lang: str) -> str:
         prompt = (
             f"You are a friendly conversational assistant that responds naturally in {target_lang_readable}. "
             "Automatically detect the source language of the user's input. "
-            f"Generate a natural, conversational reply in {target_lang_readable}.\n\n"
+            f"Generate a natural, conversational reply in {target_lang_readable} or Roman {target_lang_readable} Script. If the user demands another language, respond in that language.\n\n"
             "Rules:\n"
             "- If the input is a question, provide an appropriate answer.\n"
             "- If the input is a greeting, respond with a greeting.\n"
