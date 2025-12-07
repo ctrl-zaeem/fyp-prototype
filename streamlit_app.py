@@ -35,7 +35,7 @@ def _record_from_mic(seconds: int) -> str:
 def main() -> None:
     st.title("🌍 Multilingual Speech-to-Speech Translator")
     st.markdown(
-        "Local **Whisper** (STT) + **Gemini 2.5 Flash** (translation) + **Piper** (TTS)."
+        "Local **Whisper** (STT) + **Gemini 2.5 Flash** (translation) + **Google TTS** (TTS)."
     )
 
     # Sidebar configuration
@@ -44,13 +44,6 @@ def main() -> None:
     default_index = language_options.index(config.TARGET_LANGUAGE) if config.TARGET_LANGUAGE in language_options else 0
     target_lang = st.sidebar.selectbox("Target language", language_options, index=default_index)
     record_seconds = st.sidebar.slider("Microphone record duration (seconds)", 3, 30, config.DEFAULT_RECORD_SECONDS)
-
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Piper voices")
-    st.sidebar.caption("These filenames must exist in the `voices/` folder (or be absolute paths).")
-    for lang_key, model in list(config.PIPER_VOICE_MODELS.items()):
-        new_model = st.sidebar.text_input(f"{lang_key} voice model", value=model, key=f"voice_{lang_key}")
-        config.PIPER_VOICE_MODELS[lang_key] = new_model
 
     tab_mic, tab_upload = st.tabs(["🎙️ Microphone", "📁 Upload Audio File"])
 

@@ -5,8 +5,7 @@ Menu:
     1. Speak → Translate → Listen
     2. Translate existing audio file
     3. Change target language
-    4. Change TTS voice (per language)
-    5. Exit
+    4. Exit
 """
 
 import os
@@ -42,19 +41,9 @@ def _choose_target_language() -> None:
 
 def _change_tts_voice() -> None:
     print("\n=== Change TTS Voice ===")
-    print("Current voice mappings (logical language -> model file):")
-    for lang, model in config.PIPER_VOICE_MODELS.items():
-        print(f"  {lang}: {model}")
-    lang = input("Enter logical language to change (e.g., 'urdu', 'hindi', 'english'): ").strip().lower()
-    if not lang:
-        print("No language entered, aborting.")
-        return
-    new_model = input("Enter new Piper model filename or absolute path (leave blank to cancel): ").strip()
-    if not new_model:
-        print("No change made.")
-        return
-    config.PIPER_VOICE_MODELS[lang] = new_model
-    print(f"Updated TTS voice for '{lang}' to '{new_model}'.")
+    print("Google TTS automatically selects voices based on language.")
+    print("No manual voice configuration is needed.")
+    print("Supported languages: English, Urdu, Hindi, Punjabi, Sindhi")
 
 
 def _pipeline_speak_translate_listen() -> None:
@@ -131,10 +120,9 @@ def main() -> None:
         print("1. Speak → Translate → Listen")
         print("2. Translate existing audio file")
         print("3. Change target language")
-        print("4. Change TTS voice")
-        print("5. Exit")
+        print("4. Exit")
 
-        choice = _prompt_int("Select an option: ", 1, 5)
+        choice = _prompt_int("Select an option: ", 1, 4)
 
         if choice == 1:
             _pipeline_speak_translate_listen()
@@ -143,8 +131,6 @@ def main() -> None:
         elif choice == 3:
             _choose_target_language()
         elif choice == 4:
-            _change_tts_voice()
-        elif choice == 5:
             print("Goodbye!")
             break
 

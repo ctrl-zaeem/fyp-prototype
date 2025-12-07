@@ -53,6 +53,43 @@ def _normalize_target_lang(target_lang: str) -> str:
     return mapping.get(lang, target_lang)
 
 
+def _sanitize_translated_text(text: str) -> str:
+    """
+    Sanitize translated text by removing invalid surrogate characters.
+    
+    Translation APIs sometimes return text with invalid Unicode surrogates
+    that cannot be encoded to UTF-8. This function removes them.
+    
+    Args:
+        text: Translated text that may contain invalid Unicode characters.
+        
+    Returns:
+        Sanitized text with invalid surrogates removed.
+    """
+    if not text:
+        return text
+    
+    # Remove invalid surrogate characters (U+D800 to U+DFFF)
+    # These are invalid in UTF-8 and cause encoding errors
+    SURROGATE_START = 0xD800
+    SURROGATE_END = 0xDFFF
+    
+    # First pass: remove surrogates
+    sanitized = ''.join(
+        char for char in text 
+        if not (SURROGATE_START <= ord(char) <= SURROGATE_END)
+    )
+    
+    # Second pass: ensure valid UTF-8 encoding
+    try:
+        sanitized.encode('utf-8')
+    except UnicodeEncodeError:
+        # If encoding still fails, use replace strategy
+        sanitized = sanitized.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+    
+    return sanitized
+
+
 def translate_text(text: str, target_lang: str) -> str:
     """
     Generate a conversational reply in the target language using Gemini.
@@ -76,24 +113,27 @@ def translate_text(text: str, target_lang: str) -> str:
     client = _get_gemini_client()
     target_lang_readable = _normalize_target_lang(target_lang)
 
-    # Special prompt for Urdu to generate conversational replies in Urdu script
+    # Special prompt for Urdu - but output in Urdu script for Hindi TTS model compatibility
+    # Since we're using a Hindi TTS model (hi_IN), we need Urdu script, not Urdu script
     if target_lang_readable.lower() == "urdu":
         prompt = (
-            "You are a friendly conversational assistant that responds naturally in Urdu (اردو). "
+            "You are a friendly conversational assistant that responds naturally in Urdu/Hindi. "
             "Automatically detect the source language of the user's input. "
-            "Generate a natural, conversational reply in Urdu script (Nastaliq/Perso-Arabic) or Roman Urdu Script. If the user demands another language, respond in that language.\n\n"
+            "Generate a natural, conversational reply in Hindi/Urdu using Urdu script. "
+            "If the user demands another language, respond in that language.\n\n"
             "Rules:\n"
-            "- If the input is a question, provide an appropriate answer in Urdu (e.g., 'What is your name?' → 'میرا نام زعیم ہے').\n"
-            "- If the input is a greeting, respond with a greeting in Urdu.\n"
-            "- If the input is a statement, provide a natural response or acknowledgment in Urdu.\n"
-            "- Output MUST be in Urdu script (Nastaliq/Perso-Arabic script), NOT Hindi/Devanagari script.\n"
+            "- If the input is a question, provide an appropriate answer (e.g., 'What is your name?' → 'میں گوگل جیمنی ہوں').\n"
+            "- If the input is a greeting, respond with a greeting.\n"
+            "- If the input is a statement, provide a natural response or acknowledgment.\n"
+            "- Output MUST be in Urdu (Perso-Arabic) script, NOT Devanagari script.\n"
             "- Use proper Urdu orthography and natural conversational style.\n"
             "- Keep responses concise and natural (1-2 sentences typically).\n"
-            "- Only return the Urdu reply, with no explanation, translation notes, or comments.\n"
-            "- If the input is already in Urdu script, respond naturally in Urdu.\n"
-            "- If the input is in Hindi/Devanagari script, respond in Urdu script.\n\n"
-            f"User input:\n{text}\n\n"
-            "Your Urdu reply:"
+            "- Only return the reply in Urdu script, with no explanation, translation notes, or comments.\n"
+            "- If the input is in Devanagari script, convert it to Urdu (Perso-Arabic) script in your response.\n"
+            "- If the input is in Urdu (Perso-Arabic) script, respond naturally in Urdu.\n\n"
+            "User input:\n{text}\n\n"
+            "Your reply in Urdu script:"
+
         )
     else:
         prompt = (
@@ -117,7 +157,13 @@ def translate_text(text: str, target_lang: str) -> str:
             model=_GEMINI_MODEL_NAME, 
             contents=prompt
         )
-        return (response.text or "").strip()
+        translated_text = (response.text or "").strip()
+        
+        # Sanitize the translated text to remove any invalid Unicode surrogates
+        # that might cause encoding errors in downstream TTS processing
+        translated_text = _sanitize_translated_text(translated_text)
+        
+        return translated_text
     except APIError as e:
         print(f"Gemini API Error during translation: {e}")
         return f"[Translation Error: {e}]"

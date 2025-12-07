@@ -31,28 +31,17 @@ SAMPLE_RATE: int = 16000
 DEFAULT_RECORD_SECONDS: int = 10
 
 # =========================
-# Piper TTS configuration
+# Google TTS configuration
 # =========================
 
-# Path to the piper executable (adjust if piper is not on PATH)
-PIPER_EXECUTABLE: str = "piper"
-
-# Base directory where Piper voice models (*.onnx) are stored.
-PIPER_VOICES_DIR: str = os.path.join(os.path.dirname(__file__), "voices")
-
-# Mapping from logical language names to Piper voice model filenames.
-# You can change these to your preferred voices.
-PIPER_VOICE_MODELS = {
-    # Hindi
-    "hindi": "hin-IN-sharma-medium.onnx",
-    # Urdu (and fallback for Sindhi)
-    "urdu": "ur_PK-ameen-medium.onnx",  # example; adjust to actual filename you download
-    "sindhi": "ur_PK-ameen-medium.onnx",  # fallback to Urdu voice
-    # Punjabi – fallback to Hindi voice
-    "punjabi": "hin-IN-sharma-medium.onnx",
-    # English
-    "english": "en_US-lessac-medium.onnx",
-}
+# Google TTS (gTTS) is used for text-to-speech conversion.
+# No additional configuration needed - gTTS automatically handles language selection.
+# Supported languages: English, Urdu, Hindi, Punjabi, Sindhi
+# 
+# INSTALLATION:
+#    pip install gtts pydub
+#
+# Note: gTTS requires an active internet connection to work.
 
 # Default audio output file paths
 OUTPUT_WAV_PATH: str = os.path.join(os.path.dirname(__file__), "output.wav")

@@ -4,4 +4,6 @@ soundfile
 numpy
 google-genai
 streamlit
+gtts
+pydub
 
