@@ -122,16 +122,15 @@ def translate_text(text: str, target_lang: str) -> str:
             "Generate a natural, conversational reply in Hindi/Urdu using Urdu script. "
             "If the user demands another language, respond in that language.\n\n"
             "Rules:\n"
-            "- If the input is a question, provide an appropriate answer (e.g., 'What is your name?' → 'میں گوگل جیمنی ہوں').\n"
+            "- If the input is a question, provide an appropriate answer\n"
             "- If the input is a greeting, respond with a greeting.\n"
             "- If the input is a statement, provide a natural response or acknowledgment.\n"
             "- Output MUST be in Urdu (Perso-Arabic) script, NOT Devanagari script.\n"
             "- Use proper Urdu orthography and natural conversational style.\n"
             "- Keep responses concise and natural (1-2 sentences typically).\n"
-            "- Only return the reply in Urdu script, with no explanation, translation notes, or comments.\n"
             "- If the input is in Devanagari script, convert it to Urdu (Perso-Arabic) script in your response.\n"
             "- If the input is in Urdu (Perso-Arabic) script, respond naturally in Urdu.\n\n"
-            "User input:\n{text}\n\n"
+            f"User input:\n{text}\n\n"
             "Your reply in Urdu script:"
 
         )

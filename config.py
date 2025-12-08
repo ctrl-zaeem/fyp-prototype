@@ -11,7 +11,7 @@ import os
 
 # Prefer environment variable so secrets are not committed to disk.
 # Fallback to hard-coded placeholder that the user can edit.
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "AIzaSyBRL02cas4f5WmPWLR7sRkLFUEbVGQxkgY")
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "AIzaSyBpPJzH9qebeZn_cHXacnAMgG3Iakp2V0A")
 
 # Target language for translation (logical language name, not locale code)
 # Set to "urdu" for Urdu-focused translation with Urdu script (Nastaliq/Perso-Arabic) output
