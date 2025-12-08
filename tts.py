@@ -68,6 +68,9 @@ def _get_gtts_lang_code(lang: str) -> str:
     """
     Map logical language name to gTTS language code.
     
+    Note: Google TTS (gTTS) does not support Sindhi. Sindhi requests will
+    fallback to Urdu (ur) as they are related languages with similar scripts.
+    
     Args:
         lang: Logical language name (e.g., "urdu", "hindi", "english").
         
@@ -77,12 +80,13 @@ def _get_gtts_lang_code(lang: str) -> str:
     lang_key = (lang or "").strip().lower()
     
     # Mapping from logical language names to gTTS language codes
+    # Note: Sindhi is not supported by gTTS, so we use Urdu as fallback
     lang_mapping = {
         "english": "en",
         "urdu": "ur",
         "hindi": "hi",
         "punjabi": "pa",
-        "sindhi": "sd",
+        "sindhi": "ur",  # Fallback to Urdu since gTTS doesn't support Sindhi
     }
     
     lang_code = lang_mapping.get(lang_key)
@@ -90,6 +94,9 @@ def _get_gtts_lang_code(lang: str) -> str:
         # Fallback to English if language not found
         print(f"Warning: Language '{lang}' not found in mapping, using English (en) as fallback.")
         lang_code = "en"
+    elif lang_key == "sindhi":
+        # Warn user that Sindhi is not supported and we're using Urdu
+        print(f"Warning: Google TTS does not support Sindhi. Using Urdu (ur) as fallback for TTS.")
     
     return lang_code
 

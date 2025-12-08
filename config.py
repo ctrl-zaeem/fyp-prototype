@@ -36,7 +36,8 @@ DEFAULT_RECORD_SECONDS: int = 10
 
 # Google TTS (gTTS) is used for text-to-speech conversion.
 # No additional configuration needed - gTTS automatically handles language selection.
-# Supported languages: English, Urdu, Hindi, Punjabi, Sindhi
+# Supported languages: English, Urdu, Hindi, Punjabi
+# Note: Sindhi is not directly supported by gTTS, so it falls back to Urdu TTS
 # 
 # INSTALLATION:
 #    pip install gtts pydub
