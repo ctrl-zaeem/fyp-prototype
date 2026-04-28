@@ -70,24 +70,47 @@ def record_audio(duration: int = config.DEFAULT_RECORD_SECONDS, output_path: str
     return output_path
 
 
-def speech_to_text(audio_path: str) -> Tuple[str, str]:
+def _target_lang_to_whisper_code(target_lang: Optional[str]) -> Optional[str]:
+    """
+    Map app logical language names to Whisper language codes.
+
+    Notes:
+    - Whisper doesn't have a dedicated Balochi code; we map it to Urdu script as a best-effort.
+    """
+    if not target_lang:
+        return None
+
+    lang = target_lang.strip().lower()
+    mapping = {
+        "urdu": "ur",
+        "english": "en",
+        "punjabi": "pa",
+        "sindhi": "sd",
+        "pashto": "ps",
+        "balochi": "ur",
+    }
+    return mapping.get(lang)
+
+
+def speech_to_text(audio_path: str, *, target_lang: Optional[str] = None) -> Tuple[str, str]:
     """
     Transcribe speech in the given audio file using Whisper.
-    Focuses on Urdu language detection and transcription.
+    If target_lang is provided, transcription is forced to that language.
 
     Returns:
         (text, detected_language_code)
-    where detected_language_code is 'ur' for Urdu (or detected language if not Urdu).
     """
     model = _get_whisper_model()
 
     print(f"Transcribing audio: {audio_path}")
-    # Force Urdu language detection - Whisper will prioritize Urdu
-    # If input is not Urdu, it will still detect but we prefer Urdu
-    result = model.transcribe(audio_path, language="ur")
+    forced_code = _target_lang_to_whisper_code(target_lang)
+    if forced_code:
+        result = model.transcribe(audio_path, language=forced_code)
+    else:
+        result = model.transcribe(audio_path)
 
     text: str = result.get("text", "").strip()
-    lang: str = result.get("language", "ur")  # Default to Urdu
+    lang: str = result.get("language", "ur")
 
     print(f"Detected language: {lang}")
     print(f"Transcription: {text}")
@@ -96,26 +119,28 @@ def speech_to_text(audio_path: str) -> Tuple[str, str]:
 
 def map_whisper_lang_to_name(lang_code: str) -> str:
     """
-    Map Whisper language code to logical language name used in this project.
-    Defaults to Urdu for Urdu-focused translation.
+    Map a Whisper language code to the logical language name used in this project.
 
     Examples:
-        'ur' -> 'urdu' (primary)
-        'hi' -> 'urdu' (mapped to Urdu for translation)
+        'ur' -> 'urdu'
         'en' -> 'english'
-        'pa' -> 'urdu' (Punjabi mapped to Urdu)
-        'sd' -> 'urdu' (Sindhi mapped to Urdu)
+        'pa' -> 'punjabi'
+        'sd' -> 'sindhi'
+        'ps' -> 'pashto'
+        'hi' -> 'urdu'  (Hindi input, treat as Urdu)
+        anything else -> 'urdu'  (safe default)
     """
     code = (lang_code or "").lower()
-    # Map all Indic languages to Urdu for Urdu-focused translation
     mapping = {
         "ur": "urdu",
-        "hi": "urdu",  # Hindi input -> translate to Urdu
-        "pa": "urdu",  # Punjabi input -> translate to Urdu
-        "sd": "urdu",  # Sindhi input -> translate to Urdu
-        "en": "english",  # Keep English separate
+        "hi": "urdu",    # Hindi → Urdu (very similar script/language)
+        "en": "english",
+        "pa": "punjabi",
+        "sd": "sindhi",
+        "ps": "pashto",
+        # Balochi has no dedicated Whisper code; it may detect as 'ur' or 'ar'
     }
-    return mapping.get(code, "urdu")  # Default to Urdu
+    return mapping.get(code, "urdu")  # Safe fallback
 
 
 __all__ = ["record_audio", "speech_to_text", "map_whisper_lang_to_name"]

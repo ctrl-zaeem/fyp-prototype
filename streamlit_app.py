@@ -165,23 +165,130 @@ def _record_continuous(samplerate: int, stop_event: threading.Event, audio_queue
         audio_queue.put(np.concatenate(audio_data, axis=0))
 
 
-def main() -> None:
-    st.title("AI Agriculture Assistant | اے آئی زرعی معاون")
+# ---------------------------------------------------------------------------
+# Language labels shown in the language selection screen
+# ---------------------------------------------------------------------------
+LANGUAGE_OPTIONS = {
+    "english":  {"label": "English",         "flag": "🇬🇧"},
+    "urdu":     {"label": "اردو (Urdu)",      "flag": "🇵🇰"},
+    "sindhi":   {"label": "سنڌي (Sindhi)",   "flag": "🌊"},
+    "punjabi":  {"label": "ਪੰਜਾਬੀ (Punjabi)", "flag": "🌾"},
+    "pashto":   {"label": "پښتو (Pashto)",   "flag": "🏔️"},
+    "balochi":  {"label": "بلوچی (Balochi)",  "flag": "🌄"},
+}
+
+# Languages that use RTL Perso-Arabic script for display
+RTL_LANGUAGES = {"urdu", "punjabi", "sindhi", "pashto", "balochi"}
+
+
+def _show_language_selection() -> None:
+    """Render a full-page language selector and block further rendering."""
+    st.markdown("""
+        <style>
+        .lang-title {
+            text-align: center;
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #2e7d32;
+            margin-bottom: 0.2rem;
+        }
+        .lang-subtitle {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #555;
+            margin-bottom: 2rem;
+        }
+        .lang-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border: 2px solid #c8e6c9;
+            border-radius: 16px;
+            padding: 28px 16px;
+            font-size: 1.15rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(76,175,80,0.08);
+            min-height: 110px;
+        }
+        .lang-card:hover {
+            border-color: #4caf50;
+            box-shadow: 0 4px 16px rgba(76,175,80,0.25);
+            transform: translateY(-2px);
+        }
+        .lang-flag { font-size: 2.4rem; margin-bottom: 8px; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="lang-title">🌿 AI Agriculture Assistant</div>', unsafe_allow_html=True)
     st.markdown(
-        "Local **Whisper** (STT) + **Gemini 2.5 Flash** (translation) + **Google TTS** (TTS)."
+        '<div class="lang-subtitle">Please select your preferred language to continue<br>'
+        'براہ کرم جاری رکھنے کے لیے اپنی زبان منتخب کریں</div>',
+        unsafe_allow_html=True,
     )
 
-    # Sidebar configuration
-    st.sidebar.header("Settings")
-    language_options = ["urdu", "english", "punjabi", "sindhi"]
-    default_index = language_options.index(config.TARGET_LANGUAGE) if config.TARGET_LANGUAGE in language_options else 0
-    target_lang = st.sidebar.selectbox("Target language", language_options, index=default_index)
+    cols = st.columns(3)
+    for idx, (lang_key, meta) in enumerate(LANGUAGE_OPTIONS.items()):
+        with cols[idx % 3]:
+            st.markdown(
+                f'<div class="lang-card"><div class="lang-flag">{meta["flag"]}</div>{meta["label"]}</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(f"Select {meta['label']}", key=f"lang_btn_{lang_key}", use_container_width=True):
+                st.session_state.selected_language = lang_key
+                st.rerun()
 
-    tab_mic, tab_upload = st.tabs(["Microphone", "Upload Audio File"])
+
+def main() -> None:
+    # ------------------------------------------------------------------
+    # Language gate: show selector until the user picks a language
+    # ------------------------------------------------------------------
+    if "selected_language" not in st.session_state:
+        _show_language_selection()
+        st.stop()   # Nothing below renders until a language is chosen
+
+    target_lang: str = st.session_state.selected_language
+
+    # Allow changing language via sidebar
+    st.sidebar.header("⚙️ Settings")
+    lang_labels = {k: v["label"] for k, v in LANGUAGE_OPTIONS.items()}
+    current_label = lang_labels[target_lang]
+
+    # Qwen3 "thinking" toggle (reasoning on/off)
+    if "qwen_thinking" not in st.session_state:
+        st.session_state.qwen_thinking = False
+    st.session_state.qwen_thinking = st.sidebar.toggle(
+        "🧠 Qwen3 Thinking (Reasoning)",
+        value=st.session_state.qwen_thinking,
+        help="ON: model may use internal reasoning (then hidden). OFF: forces direct answers without thinking tags.",
+    )
+
+    new_label = st.sidebar.selectbox(
+        "🌐 Language / زبان",
+        list(lang_labels.values()),
+        index=list(lang_labels.values()).index(current_label),
+    )
+    # Reverse-lookup from label → key
+    new_lang_key = next(k for k, v in LANGUAGE_OPTIONS.items() if v["label"] == new_label)
+    if new_lang_key != target_lang:
+        st.session_state.selected_language = new_lang_key
+        st.rerun()
+
+    flag = LANGUAGE_OPTIONS[target_lang]["flag"]
+    st.title(f"AI Agriculture Assistant | اے آئی زرعی معاون")
+    st.markdown(
+        f"Talking in: {flag} **{lang_labels[target_lang]}**  ·  "
+        "Local **Whisper** (STT) + **Ollama Qwen3:8B** (AI) + **Google TTS** (TTS)."
+    )
+
+    tab_mic, tab_upload, tab_text = st.tabs(["🎙️ Microphone", "📂 Upload Audio File", "⌨️ Text Input"])
 
     with tab_mic:
         st.subheader("Record from Microphone")
-        st.caption("Use your system default microphone. Whisper will auto-detect the spoken language.")
+        st.caption("Use your system default microphone. Whisper will transcribe in the selected language.")
 
         # Initialize session state for recording
         if 'recording' not in st.session_state:
@@ -278,8 +385,8 @@ def main() -> None:
                 # Step 1: Transcribing
                 if st.session_state.processing_step == 'transcribing':
                     with st.spinner(" Transcribing audio..."):
-                        text, detected_lang_code = stt.speech_to_text(audio_path)
-                        detected_lang_name = stt.map_whisper_lang_to_name(detected_lang_code)
+                        text, detected_lang_code = stt.speech_to_text(audio_path, target_lang=target_lang)
+                        detected_lang_name = target_lang
                         
                         # Store results in session state
                         st.session_state.detected_lang = detected_lang_name
@@ -290,23 +397,29 @@ def main() -> None:
                 
                 # Step 2: Translation (only if transcription is done)
                 if st.session_state.processing_step == 'translating' and 'transcribed_text' in st.session_state:
-                    with st.spinner("Translating..."):
-                        translated = translate.translate_text(st.session_state.transcribed_text, target_lang=target_lang)
-                        # For Punjabi, render the LLM response itself in Shahmukhi (Urdu) script for display,
-                        # while keeping the Punjabi response for TTS.
-                        if target_lang == "punjabi":
-                            display_prompt = (
-                                "Convert the following Punjabi response into Shahmukhi (Urdu) script only. "
-                                "Do not change wording or meaning. "
-                                "Return only Punjabi in Shahmukhi script without explanations.\n\n"
-                                f"Punjabi response:\n{translated}"
-                            )
-                            display_translation = translate.translate_text(display_prompt, target_lang="punjabi")
-                            st.session_state.translated_text_display = display_translation
-                            st.session_state.translated_text_audio = translated
-                        else:
-                            st.session_state.translated_text_display = translated
-                            st.session_state.translated_text_audio = translated
+                    live_box = st.empty()
+                    with st.spinner("Translating (streaming from Ollama)…"):
+                        def _progress(partial: str) -> None:
+                            # Show partial text as it streams in
+                            if target_lang in RTL_LANGUAGES:
+                                live_box.markdown(
+                                    f'<div class="urdu-text" dir="rtl">{partial}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                live_box.markdown(
+                                    f'<div class="ltr-text" dir="ltr">{partial}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                        translated = translate.translate_text(
+                            st.session_state.transcribed_text,
+                            target_lang=target_lang,
+                            thinking=st.session_state.qwen_thinking,
+                            progress_callback=_progress,
+                        )
+                        st.session_state.translated_text_display = translated
+                        st.session_state.translated_text_audio = translated
                         st.session_state.processing_step = 'synthesizing'
                         st.rerun()
                 
@@ -336,20 +449,27 @@ def main() -> None:
                 
                 # Step 1: Show transcribed text
                 st.markdown("####  Step 1: Transcribed Text")
-                st.write(f"**Detected Language:** {st.session_state.detected_lang} (`{st.session_state.detected_lang_code}`)")
+                st.write(f"**Selected Language:** {lang_labels[target_lang]}")
                 
                 transcribed_display = st.session_state.transcribed_text
-                st.markdown(
-                    f'<div class="urdu-text" dir="rtl">{transcribed_display}</div>',
-                    unsafe_allow_html=True
-                )
+                # Use RTL box when the selected language uses Perso-Arabic script
+                if target_lang in RTL_LANGUAGES:
+                    st.markdown(
+                        f'<div class="urdu-text" dir="rtl">{transcribed_display}</div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f'<div class="ltr-text" dir="ltr">{transcribed_display}</div>',
+                        unsafe_allow_html=True
+                    )
                 
                 # Step 2: Show translated text (if available)
                 if 'translated_text_display' in st.session_state and st.session_state.translated_text_display:
                     st.markdown("####  Step 2: Translated Text")
                     translated_display = st.session_state.translated_text_display
-                    # Show Urdu-style box for Urdu or Punjabi (Punjabi displayed in Urdu script)
-                    if target_lang in ("urdu", "punjabi"):
+                    # RTL box for all Perso-Arabic script languages
+                    if target_lang in RTL_LANGUAGES:
                         st.markdown(
                             f'<div class="urdu-text" dir="rtl">{translated_display}</div>',
                             unsafe_allow_html=True
@@ -366,6 +486,7 @@ def main() -> None:
                         with open(st.session_state.output_audio_path, "rb") as f:
                             out_bytes = f.read()
                         st.audio(out_bytes, format="audio/wav")
+                        st.caption(f"TTS used: **{tts.get_last_tts_engine_info()}**")
 
     with tab_upload:
         st.subheader("Upload Audio File")
@@ -406,8 +527,8 @@ def main() -> None:
             # Step 1: Transcribing
             if st.session_state.upload_processing_step == 'transcribing':
                 with st.spinner(" Transcribing audio..."):
-                    text, detected_lang_code = stt.speech_to_text(temp_path)
-                    detected_lang_name = stt.map_whisper_lang_to_name(detected_lang_code)
+                    text, detected_lang_code = stt.speech_to_text(temp_path, target_lang=target_lang)
+                    detected_lang_name = target_lang
                     
                     # Store in session state for upload tab
                     st.session_state.upload_detected_lang = detected_lang_name
@@ -418,23 +539,28 @@ def main() -> None:
             
             # Step 2: Translation (only if transcription is done)
             if st.session_state.upload_processing_step == 'translating' and 'upload_transcribed_text' in st.session_state:
-                with st.spinner(" Translating text..."):
-                    translated = translate.translate_text(st.session_state.upload_transcribed_text, target_lang=target_lang)
-                    # For Punjabi, render the LLM response itself in Shahmukhi (Urdu) script for display,
-                    # while keeping the Punjabi response for TTS.
-                    if target_lang == "punjabi":
-                        display_prompt = (
-                            "Convert the following Punjabi response into Shahmukhi (Urdu) script only. "
-                            "Do not change wording or meaning. "
-                            "Return only Punjabi in Shahmukhi script without explanations.\n\n"
-                            f"Punjabi response:\n{translated}"
-                        )
-                        display_translation = translate.translate_text(display_prompt, target_lang="punjabi")
-                        st.session_state.upload_translated_text_display = display_translation
-                        st.session_state.upload_translated_text_audio = translated
-                    else:
-                        st.session_state.upload_translated_text_display = translated
-                        st.session_state.upload_translated_text_audio = translated
+                live_box = st.empty()
+                with st.spinner(" Translating (streaming from Ollama)…"):
+                    def _progress(partial: str) -> None:
+                        if target_lang in RTL_LANGUAGES:
+                            live_box.markdown(
+                                f'<div class="urdu-text" dir="rtl">{partial}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            live_box.markdown(
+                                f'<div class="ltr-text" dir="ltr">{partial}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    translated = translate.translate_text(
+                        st.session_state.upload_transcribed_text,
+                        target_lang=target_lang,
+                        thinking=st.session_state.qwen_thinking,
+                        progress_callback=_progress,
+                    )
+                    st.session_state.upload_translated_text_display = translated
+                    st.session_state.upload_translated_text_audio = translated
                     st.session_state.upload_processing_step = 'synthesizing'
                     st.rerun()
             
@@ -457,20 +583,27 @@ def main() -> None:
                 
                 # Step 1: Show transcribed text
                 st.markdown("####  Step 1: Transcribed Text")
-                st.write(f"**Detected Language:** {st.session_state.upload_detected_lang} (`{st.session_state.upload_detected_lang_code}`)")
+                st.write(f"**Selected Language:** {lang_labels[target_lang]}")
                 
                 transcribed_display = st.session_state.upload_transcribed_text
-                st.markdown(
-                    f'<div class="urdu-text" dir="rtl">{transcribed_display}</div>',
-                    unsafe_allow_html=True
-                )
+                # Use RTL box when the selected language uses Perso-Arabic script
+                if target_lang in RTL_LANGUAGES:
+                    st.markdown(
+                        f'<div class="urdu-text" dir="rtl">{transcribed_display}</div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f'<div class="ltr-text" dir="ltr">{transcribed_display}</div>',
+                        unsafe_allow_html=True
+                    )
                 
                 # Step 2: Show translated text (if available)
                 if 'upload_translated_text_display' in st.session_state and st.session_state.upload_translated_text_display:
                     st.markdown("####  Step 2: Translated Text")
                     translated_display = st.session_state.upload_translated_text_display
-                    # Show Urdu-style box for Urdu or Punjabi (Punjabi displayed in Urdu script)
-                    if target_lang in ("urdu", "punjabi"):
+                    # RTL box for all Perso-Arabic script languages
+                    if target_lang in RTL_LANGUAGES:
                         st.markdown(
                             f'<div class="urdu-text" dir="rtl">{translated_display}</div>',
                             unsafe_allow_html=True
@@ -487,6 +620,130 @@ def main() -> None:
                         with open(st.session_state.upload_output_audio_path, "rb") as f:
                             out_bytes = f.read()
                         st.audio(out_bytes, format="audio/wav")
+                        st.caption(f"TTS used: **{tts.get_last_tts_engine_info()}**")
+
+
+    with tab_text:
+        st.subheader("Type or Paste Text")
+        st.caption("Enter any text below. It will be translated to your selected language and synthesized as speech.")
+
+        if "text_input_value" not in st.session_state:
+            st.session_state.text_input_value = ""
+        if "text_processing_step" not in st.session_state:
+            st.session_state.text_processing_step = None
+
+        col_txt1, col_txt2 = st.columns([1, 2])
+
+        with col_txt1:
+            user_text = st.text_area(
+                "Enter text to translate",
+                value=st.session_state.text_input_value,
+                height=200,
+                placeholder="Type your message here...",
+                key="text_area_input",
+            )
+
+            if st.button("\U0001f504 Translate and Speak", type="primary", use_container_width=True):
+                if user_text.strip():
+                    st.session_state.text_input_value = user_text
+                    for key in ["text_translated_display", "text_translated_audio", "text_output_audio_path"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.text_processing_step = "translating"
+                    st.rerun()
+                else:
+                    st.warning("Please enter some text first.")
+
+            if st.button("\U0001f5d1\ufe0f Clear", use_container_width=True):
+                st.session_state.text_input_value = ""
+                st.session_state.text_processing_step = None
+                for key in ["text_translated_display", "text_translated_audio", "text_output_audio_path"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+
+        with col_txt2:
+            st.info(
+                "Type or paste any text in the box on the left, then click "
+                "**Translate and Speak**. The text will be translated to your chosen "
+                "language and spoken aloud."
+            )
+
+            # Translation step
+            if st.session_state.text_processing_step == "translating":
+                live_box = st.empty()
+                with st.spinner("\U0001f504 Translating (streaming from Ollama)…"):
+                    def _progress(partial: str) -> None:
+                        if target_lang in RTL_LANGUAGES:
+                            live_box.markdown(
+                                f'<div class="urdu-text" dir="rtl">{partial}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            live_box.markdown(
+                                f'<div class="ltr-text" dir="ltr">{partial}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    translated = translate.translate_text(
+                        st.session_state.text_input_value,
+                        target_lang=target_lang,
+                        thinking=st.session_state.qwen_thinking,
+                        progress_callback=_progress,
+                    )
+                    st.session_state.text_translated_display = translated
+                    st.session_state.text_translated_audio = translated
+                    st.session_state.text_processing_step = "synthesizing"
+                    st.rerun()
+
+            # TTS step
+            if (
+                st.session_state.text_processing_step == "synthesizing"
+                and "text_translated_audio" in st.session_state
+                and st.session_state.text_translated_audio
+            ):
+                with st.spinner("\U0001f50a Synthesizing speech..."):
+                    out_path = tts.text_to_speech(
+                        st.session_state.text_translated_audio,
+                        lang=target_lang,
+                        output_path=config.OUTPUT_WAV_PATH,
+                    )
+                    st.session_state.text_output_audio_path = out_path
+                    st.session_state.text_processing_step = "complete"
+                    st.rerun()
+
+            # Show results
+            if "text_translated_display" in st.session_state and st.session_state.text_translated_display:
+                st.markdown("---")
+                st.markdown("### Results")
+
+                st.markdown("#### \U0001f4dd Original Text")
+                st.markdown(
+                    f'<div class="ltr-text" dir="ltr">{st.session_state.text_input_value}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("#### \U0001f310 Translated Text")
+                translated_display = st.session_state.text_translated_display
+                if target_lang in RTL_LANGUAGES:
+                    st.markdown(
+                        f'<div class="urdu-text" dir="rtl">{translated_display}</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div class="ltr-text" dir="ltr">{translated_display}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                if "text_output_audio_path" in st.session_state and os.path.exists(
+                    st.session_state.text_output_audio_path
+                ):
+                    st.markdown("#### \U0001f50a Output Audio")
+                    with open(st.session_state.text_output_audio_path, "rb") as f:
+                        out_bytes = f.read()
+                    st.audio(out_bytes, format="audio/wav")
+                    st.caption(f"TTS used: **{tts.get_last_tts_engine_info()}**")
 
 
 if __name__ == "__main__":

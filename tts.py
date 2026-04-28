@@ -8,12 +8,27 @@ Responsibilities:
 """
 
 import os
+import re
 from typing import Optional
 
-from gtts import gTTS
 import tempfile
 
 import config
+
+try:
+    from gtts import gTTS  # type: ignore
+except Exception:  # gTTS is optional if Edge TTS is available
+    gTTS = None  # type: ignore
+
+
+_LAST_TTS_ENGINE_INFO: str = "Unknown"
+
+
+def get_last_tts_engine_info() -> str:
+    """
+    Return a short human-readable description of the last TTS engine used.
+    """
+    return _LAST_TTS_ENGINE_INFO
 
 
 def _sanitize_unicode_text(text: str) -> str:
@@ -101,6 +116,147 @@ def _get_gtts_lang_code(lang: str) -> str:
     return lang_code
 
 
+def _prepare_tts_text(text: str) -> str:
+    """
+    Prepare text for TTS so it sounds natural and doesn't read markup/symbols.
+
+    Goals:
+    - Remove markdown formatting characters (*, _, backticks, headings)
+    - Remove code blocks that TTS reads awkwardly
+    - Convert bullets/newlines into spoken-friendly sentences
+    """
+    if not text:
+        return text
+
+    # Remove fenced code blocks entirely
+    text = re.sub(r"```[\s\S]*?```", " ", text)
+
+    # Remove inline code markers but keep content
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+
+    # Remove common markdown emphasis/formatting symbols
+    text = text.replace("*", " ")
+    text = text.replace("_", " ")
+    text = text.replace("~", " ")
+    text = text.replace("#", " ")
+
+    # Replace list bullets with pauses
+    text = re.sub(r"(?m)^\s*[-•]\s+", " ", text)
+    text = re.sub(r"(?m)^\s*\d+\.\s+", " ", text)
+
+    # Collapse multiple punctuation that gets spelled out oddly
+    text = re.sub(r"[|<>[\]{}^=]+", " ", text)
+
+    # Normalize whitespace and newlines into sentence-like pauses
+    text = text.replace("\r", "\n")
+    text = re.sub(r"\n{2,}", ". ", text)
+    text = re.sub(r"\n", ". ", text)
+
+    # Final whitespace normalize
+    text = ' '.join(text.split()).strip()
+    return text
+
+
+def _edge_voice_candidates(lang: str) -> list[str]:
+    """
+    Voice candidates for Edge TTS. We try multiple to avoid hard failures.
+    """
+    key = (lang or "").strip().lower()
+    mapping: dict[str, list[str]] = {
+        "english": ["en-US-JennyNeural", "en-US-GuyNeural"],
+        "urdu": ["ur-PK-UzmaNeural", "ur-PK-AsadNeural"],
+        "punjabi": ["pa-IN-GurleenNeural", "pa-IN-BaljeetNeural"],
+        "sindhi": ["ur-PK-UzmaNeural", "ur-PK-AsadNeural"],  # fallback
+        "pashto": ["ps-AF-LatifaNeural", "ps-AF-GulNawazNeural", "ur-PK-UzmaNeural"],
+        "balochi": ["ur-PK-UzmaNeural", "ur-PK-AsadNeural"],  # fallback
+    }
+    return mapping.get(key, ["en-US-JennyNeural"])
+
+
+def _try_edge_tts_to_wav(text: str, lang: str, output_path: str) -> bool:
+    """
+    Try to synthesize speech using Edge TTS (more natural than gTTS).
+    Returns True on success, False if Edge TTS isn't available or fails.
+    """
+    try:
+        import asyncio
+        import edge_tts  # type: ignore
+    except Exception:
+        return False
+
+    text = _prepare_tts_text(text)
+    if not text:
+        return False
+
+    # Edge TTS writes audio bytes to a file path.
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
+        tmp_mp3_path = tmp_mp3.name
+
+    async def _synth() -> None:
+        last_exc: Optional[Exception] = None
+        for voice in _edge_voice_candidates(lang):
+            try:
+                communicate = edge_tts.Communicate(
+                    text=text,
+                    voice=voice,
+                    rate="+8%",   # slightly faster = more natural
+                    pitch="+0Hz",
+                    volume="+0%",
+                )
+                await communicate.save(tmp_mp3_path)
+                global _LAST_TTS_ENGINE_INFO
+                _LAST_TTS_ENGINE_INFO = f"Edge TTS ({voice})"
+                return
+            except Exception as e:  # try next voice
+                last_exc = e
+                continue
+        if last_exc:
+            raise last_exc
+
+    try:
+        asyncio.run(_synth())
+    except RuntimeError:
+        # If we're already inside an event loop (rare in Streamlit), use a new loop.
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(_synth())
+            finally:
+                loop.close()
+        except Exception:
+            try:
+                os.unlink(tmp_mp3_path)
+            except Exception:
+                pass
+            return False
+    except Exception:
+        try:
+            os.unlink(tmp_mp3_path)
+        except Exception:
+            pass
+        return False
+
+    # Convert to WAV if possible; otherwise, keep MP3 with .wav extension (same fallback as current gTTS behavior)
+    try:
+        from pydub import AudioSegment  # type: ignore
+        audio = AudioSegment.from_mp3(tmp_mp3_path)
+        audio.export(output_path, format="wav")
+        os.unlink(tmp_mp3_path)
+        return True
+    except Exception:
+        try:
+            import shutil
+            shutil.copy(tmp_mp3_path, output_path)
+            os.unlink(tmp_mp3_path)
+            return True
+        except Exception:
+            try:
+                os.unlink(tmp_mp3_path)
+            except Exception:
+                pass
+            return False
+
+
 def text_to_speech(text: str, lang: str, output_path: Optional[str] = None) -> str:
     """
     Convert text to speech using Google TTS (gTTS) and save as a WAV file.
@@ -122,6 +278,7 @@ def text_to_speech(text: str, lang: str, output_path: Optional[str] = None) -> s
 
     # Sanitize text to remove invalid Unicode surrogates that cause encoding errors
     text = _sanitize_unicode_text(text)
+    text = _prepare_tts_text(text)
     
     if not text:
         raise ValueError("text_to_speech called with text that became empty after sanitization.")
@@ -149,6 +306,21 @@ def text_to_speech(text: str, lang: str, output_path: Optional[str] = None) -> s
     print(f"[TTS Debug] Text preview (first 100 chars): {repr(text[:100])}")
 
     try:
+        # Prefer Edge TTS (more natural) when available; fallback to gTTS.
+        if _try_edge_tts_to_wav(text=text, lang=lang, output_path=output_path):
+            if not os.path.isfile(output_path):
+                raise RuntimeError("Edge TTS reported success but output file not found.")
+            print(f"TTS audio generated at: {output_path}")
+            return output_path
+
+        if gTTS is None:
+            raise RuntimeError(
+                "No TTS engine available. Install either 'edge-tts' (recommended) or 'gTTS'."
+            )
+
+        global _LAST_TTS_ENGINE_INFO
+        _LAST_TTS_ENGINE_INFO = f"gTTS ({lang_code})"
+
         # Create gTTS object
         tts = gTTS(text=text, lang=lang_code, slow=False)
         
@@ -234,4 +406,4 @@ def check_gtts_available() -> bool:
         return False
 
 
-__all__ = ["text_to_speech", "check_gtts_available"]
+__all__ = ["text_to_speech", "check_gtts_available", "get_last_tts_engine_info"]

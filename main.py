@@ -67,7 +67,7 @@ def _pipeline_speak_translate_listen() -> None:
 
     target_lang = config.TARGET_LANGUAGE
     print(f"\nTranslating to target language: {target_lang}")
-    translated = translate.translate_text(text, target_lang=target_lang)
+    translated = translate.translate_text(text, target_lang=target_lang, thinking=False)
     print(f"Translated text: {translated}")
 
     if not translated:
@@ -100,7 +100,7 @@ def _pipeline_translate_existing_audio() -> None:
 
     target_lang = config.TARGET_LANGUAGE
     print(f"\nTranslating to target language: {target_lang}")
-    translated = translate.translate_text(text, target_lang=target_lang)
+    translated = translate.translate_text(text, target_lang=target_lang, thinking=False)
     print(f"Translated text: {translated}")
 
     if not translated:

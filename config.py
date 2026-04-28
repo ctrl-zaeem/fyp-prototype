@@ -11,10 +11,21 @@ import os
 
 # Prefer environment variable so secrets are not committed to disk.
 # Fallback to hard-coded placeholder that the user can edit.
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "AIzaSyBRL02cas4f5WmPWLR7sRkLFUEbVGQxkgY") #AIzaSyBRL02cas4f5WmPWLR7sRkLFUEbVGQxkgY #AIzaSyBpPJzH9qebeZn_cHXacnAMgG3Iakp2V0A
+
+# GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "AIzaSyBRL02cas4f5WmPWLR7sRkLFUEbVGQxkgY") #AIzaSyBRL02cas4f5WmPWLR7sRkLFUEbVGQxkgY #AIzaSyBpPJzH9qebeZn_cHXacnAMgG3Iakp2V0A
+
+# Local Ollama model for the assistant (pull once with: `ollama pull qwen3:8b`)
+QWEN_MODEL_NAME: str = "qwen3:8b"
+
+# Ollama HTTP timeouts (seconds)
+# If Ollama is down, connect_timeout makes it fail fast instead of hanging the UI.
+# If model generation is slow, read_timeout limits how long we wait for a response.
+OLLAMA_CONNECT_TIMEOUT_S: int = 5
+# Set to None to wait indefinitely for model generation (recommended for slow first runs).
+OLLAMA_READ_TIMEOUT_S = None
 
 # Target language for translation (logical language name, not locale code)
-# Set to "urdu" for Urdu-focused translation with Urdu script (Nastaliq/Perso-Arabic) output
+# Supported: "urdu", "english", "punjabi", "sindhi", "pashto", "balochi"
 TARGET_LANGUAGE: str = "urdu"
 
 # =========================

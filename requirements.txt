@@ -6,4 +6,6 @@ google-genai
 streamlit
 gtts
 pydub
+edge-tts
+requests
 
