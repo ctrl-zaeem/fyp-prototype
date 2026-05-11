@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { placeholderTexts, quickReplyChips } from '../data/responses';
+import * as LucideIcons from 'lucide-react';
+import { Send, Mic, Square, Paperclip } from 'lucide-react';
 import './ChatInput.css';
 
 const UI_TEXT = {
@@ -138,17 +140,20 @@ export default function ChatInput({
     <div className="chat-input">
 
       <div className="chat-input__chips" dir={isRTL ? 'rtl' : 'ltr'}>
-        {chips.map((chip, i) => (
-          <button
-            key={i}
-            className="chat-input__chip"
-            onClick={() => onSend(chip.query)}
-            disabled={disabled}
-          >
-            <span>{chip.icon}</span>
-            {chip.label}
-          </button>
-        ))}
+        {chips.map((chip, i) => {
+          const IconComponent = LucideIcons[chip.icon] || LucideIcons.HelpCircle;
+          return (
+            <button
+              key={i}
+              className="chat-input__chip"
+              onClick={() => onSend(chip.query)}
+              disabled={disabled}
+            >
+              <IconComponent size={14} className="chat-input__chip-icon" />
+              {chip.label}
+            </button>
+          );
+        })}
       </div>
 
       {showFileNotice && (
@@ -169,13 +174,9 @@ export default function ChatInput({
           title={isRecording ? "Click to stop" : "Click to speak"}
         >
           {isRecording ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="7" y="7" width="10" height="10" rx="1" />
-            </svg>
+            <Square size={18} fill="currentColor" />
           ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 3.07-2.13 5.64-5 6.32V21h-2v-3.68C7.13 16.64 5 14.07 5 11H3c0 3.53 2.61 6.43 6 6.92V22h6v-4.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-            </svg>
+            <Mic size={18} />
           )}
         </button>
         {/* 📎 UPLOAD BUTTON (UNCHANGED) */}
@@ -185,9 +186,7 @@ export default function ChatInput({
           type="button"
           aria-label="Attach file"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M16.5 6.5l-7.79 7.79a3 3 0 104.24 4.24l8.49-8.49a5 5 0 10-7.07-7.07L5.88 11.46a7 7 0 109.9 9.9l7.07-7.07"/>
-          </svg>
+          <Paperclip size={18} />
         </button>
 
         <input
@@ -226,7 +225,7 @@ export default function ChatInput({
           disabled={!input.trim() || disabled}
           type="button"
         >
-          ➤
+          <Send size={18} />
         </button>
 
       </div>

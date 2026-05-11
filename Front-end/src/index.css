@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* =============================================
    GLOBAL BASE STYLES
    ============================================= */
@@ -11,7 +15,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic",
+  font-family: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic",
     "Noto Naskh Arabic", sans-serif;
   overflow: hidden;
   /* Prevent iOS bounce/overscroll */
@@ -45,4 +49,3 @@ p {
     min-width: 44px;
   }
 }
-

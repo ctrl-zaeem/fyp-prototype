@@ -44,7 +44,7 @@ export default function App() {
 
   // 🎛 UI state
   const [isTyping, setIsTyping] = useState(false);
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState(() => localStorage.getItem('agri_lang') || 'en');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -214,7 +214,7 @@ export default function App() {
           {
             id: statusId,
             role: "status",
-            text: "⏳ Processing voice… (transcribe → translate → generate audio)",
+            text: "Processing voice… (transcribe → translate → generate audio)",
             time: getTimestamp()
           }
         ]);
@@ -243,7 +243,7 @@ export default function App() {
             {
               id: Date.now(),
               role: "user",
-              text: data.original_text || "🎧 Voice message",
+              text: data.original_text || "Voice message",
               time: getTimestamp()
             },
             {
@@ -341,7 +341,7 @@ export default function App() {
         {
           id: Date.now(),
           role: "ai",
-          text: "⚠️ Server error. Check backend.",
+          text: "Server error. Check backend.",
           time: getTimestamp()
         }
       ]);
@@ -385,63 +385,18 @@ export default function App() {
           onLanguageChange={handleLanguageChange}
           onMenuToggle={() => setSidebarOpen(p => !p)}
           hasMessages={messages.length > 0}
+          weather={weather}
+          weatherLoading={weatherLoading}
+          weatherError={weatherError}
         />
 
-        <section className="weather">
-          <div className="weather__row">
-            <button
-              className="weather__btn"
-              onClick={handleGetWeather}
-              disabled={weatherLoading}
-              type="button"
-            >
-              {weatherLoading ? (
-                <>
-                  <span className="weather__btn-text">Getting Weather</span>
-                  <span className="weather__btn-dot" aria-hidden="true" />
-                </>
-              ) : (
-                'Get Weather'
-              )}
-            </button>
-          </div>
 
-          {weatherError ? (
-            <div className="weather__error" role="status">{weatherError}</div>
-          ) : null}
-
-          {weather ? (
-            <div className="weather__card">
-              <div className="weather__city">{weather.city || 'Your area'}</div>
-              <div className="weather__grid">
-                <div className="weather__item">
-                  <span className="weather__label">Temp</span>
-                  <span className="weather__value">
-                    {typeof weather.temperature === 'number' ? weather.temperature : '—'}°C
-                  </span>
-                </div>
-                <div className="weather__item">
-                  <span className="weather__label">Humidity</span>
-                  <span className="weather__value">
-                    {typeof weather.humidity === 'number' ? weather.humidity : '—'}%
-                  </span>
-                </div>
-                <div className="weather__item weather__item--full">
-                  <span className="weather__label">Description</span>
-                  <span className="weather__value">{weather.description || '—'}</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </section>
 
         <div className="app__chat-area" ref={chatAreaRef}>
 
           {messages.length === 0 ? (
             <WelcomeScreen
               language={language}
-              suggestions={currentSuggestions}
-              onSuggestionSelect={handleSuggestionSelect}
             />
           ) : (
             <div className="app__messages">
@@ -477,7 +432,7 @@ export default function App() {
       {
         id: Date.now(),
         role: "user",
-        text: data.original_text || "🎧 Audio message",
+        text: data.original_text || "Audio message",
         time: getTimestamp()
       }
     ]);

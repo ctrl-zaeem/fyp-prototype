@@ -194,11 +194,7 @@ function processInline(text) {
   // Strikethrough
   result = result.replace(/~~([^~]+)~~/g, '<del>$1</del>');
 
-  // Warning indicators
-  result = result.replace(/⚠️/g, '<span class="md-warning">⚠️</span>');
 
-  // Checkmarks
-  result = result.replace(/✅/g, '<span class="md-check">✅</span>');
 
   return result;
 }

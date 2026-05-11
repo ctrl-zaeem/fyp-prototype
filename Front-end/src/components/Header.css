@@ -7,8 +7,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 24px;
-  background: linear-gradient(135deg, rgba(10, 31, 10, 0.95), rgba(13, 40, 24, 0.95));
-  border-bottom: 1px solid rgba(46, 125, 50, 0.25);
+  background: rgba(4, 9, 12, 0.7);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.15);
   backdrop-filter: blur(12px);
   z-index: 50;
   min-height: 64px;
@@ -184,42 +184,116 @@
   box-shadow: 0 1px 4px rgba(46, 125, 50, 0.3);
 }
 
-/* ─── Connection/Offline Status ──────────────── */
+/* ─── Weather Pill ───────────────────────────── */
+.header__weather {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(46, 125, 50, 0.12);
+  border: 1px solid rgba(76, 175, 80, 0.22);
+  border-radius: 20px;
+  animation: weatherPillIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.25s ease;
+}
+
+.header__weather:hover {
+  border-color: rgba(76, 175, 80, 0.4);
+}
+
+@keyframes weatherPillIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.header__weather--loading {
+  opacity: 0.6;
+}
+
+.header__weather--unavailable {
+  background: rgba(255, 152, 0, 0.08);
+  border-color: rgba(255, 152, 0, 0.25);
+  opacity: 0.75;
+}
+
+.header__weather-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(76, 175, 80, 0.3);
+  border-top-color: #66bb6a;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.header__weather-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.header__weather-city {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a5d6a7;
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header__weather-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(76, 175, 80, 0.25);
+  flex-shrink: 0;
+}
+
+.header__weather-temp {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c8e6c9;
+  white-space: nowrap;
+}
+
+.header__weather-humidity {
+  font-size: 11px;
+  color: rgba(165, 214, 167, 0.6);
+  white-space: nowrap;
+}
+
+.header__weather-text {
+  font-size: 11px;
+  color: rgba(165, 214, 167, 0.5);
+}
+
+/* ─── Offline Status ──────────────────────────── */
 .header__status {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: rgba(46, 125, 50, 0.12);
-  border: 1px solid rgba(76, 175, 80, 0.2);
-  border-radius: 20px;
-  transition: all 0.3s ease;
-}
-
-.header__status--offline {
+  padding: 5px 12px;
   background: rgba(255, 152, 0, 0.12);
-  border-color: rgba(255, 152, 0, 0.3);
-}
-
-.header__status-icon {
-  color: #66bb6a;
-  flex-shrink: 0;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 20px;
 }
 
 .header__status-icon--offline {
   color: #ffb74d;
+  flex-shrink: 0;
 }
 
 .header__status-text {
   font-size: 11px;
   font-weight: 600;
-  color: #81c784;
+  color: #ffb74d;
   letter-spacing: 0.3px;
   white-space: nowrap;
-}
-
-.header__status--offline .header__status-text {
-  color: #ffb74d;
 }
 
 .header__status-dot {
@@ -229,12 +303,6 @@
   flex-shrink: 0;
 }
 
-.header__status-dot--online {
-  background: #4caf50;
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
-  animation: statusPulse 2s ease-in-out infinite;
-}
-
 .header__status-dot--offline {
   background: #ff9800;
   box-shadow: 0 0 8px rgba(255, 152, 0, 0.5);
@@ -242,8 +310,8 @@
 }
 
 @keyframes statusPulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(76, 175, 80, 0.6); }
-  50% { opacity: 0.6; box-shadow: 0 0 16px rgba(76, 175, 80, 0.9); }
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
 }
 
 /* =============================================

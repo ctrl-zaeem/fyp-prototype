@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
+import { Play, Pause, MoreHorizontal, Square, Trash2, User, Bot, Volume2 } from 'lucide-react';
 import { parseMarkdown } from '../utils/parseMarkdown';
 import './ChatMessage.css';
 
@@ -10,6 +11,153 @@ const UI_TEXT = {
   pa: { you: 'تسیں', ai: 'اے آئی مددگار', stop: 'رکو', delete: 'ڈیلیٹ', readAloud: 'اچی آواز نال پڑھو' },
   ps: { you: 'تاسو', ai: 'AI مرسته', stop: 'بندېدن', delete: 'ړنګول', readAloud: 'په غوږ واخلئ' }
 };
+
+/**
+ * Beautiful audio player replacing the plain white HTML audio bar.
+ * Shows waveform bars that animate while playing.
+ */
+function AudioPlayer({ src, onStop, onDelete, stopLabel, deleteLabel }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [showActions, setShowActions] = useState(false);
+  const animFrameRef = useRef(null);
+
+  // Waveform bar heights (stable pseudo-random)
+  const bars = useMemo(() => {
+    return Array.from({ length: 28 }, (_, i) => {
+      const seed = (i * 7919 + 12345) % 65536;
+      return 0.25 + (seed / 65536) * 0.75;
+    });
+  }, []);
+
+  const formatTime = (s) => {
+    if (!isFinite(s) || isNaN(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const tick = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    setCurrentTime(el.currentTime);
+    setProgress(el.duration ? (el.currentTime / el.duration) * 100 : 0);
+    if (!el.paused) {
+      animFrameRef.current = requestAnimationFrame(tick);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.play().catch(() => {});
+      setIsPlaying(true);
+      animFrameRef.current = requestAnimationFrame(tick);
+    } else {
+      el.pause();
+      setIsPlaying(false);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    }
+  };
+
+  const handleSeek = (e) => {
+    const el = audioRef.current;
+    if (!el || !el.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = x / rect.width;
+    el.currentTime = pct * el.duration;
+    setProgress(pct * 100);
+  };
+
+  return (
+    <div className={`cm-audio ${isPlaying ? 'cm-audio--playing' : ''}`}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+        onEnded={() => { setIsPlaying(false); setProgress(0); setCurrentTime(0); }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+      />
+
+      {/* Play / Pause button */}
+      <button className="cm-audio__play-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+        {isPlaying ? (
+          <Pause size={16} fill="currentColor" />
+        ) : (
+          <Play size={16} fill="currentColor" />
+        )}
+      </button>
+
+      {/* Waveform + scrub */}
+      <div className="cm-audio__waveform-wrap" onClick={handleSeek}>
+        <div className="cm-audio__waveform">
+          {bars.map((h, i) => {
+            const barPos = i / bars.length;
+            const filled = barPos < progress / 100;
+            return (
+              <div
+                key={i}
+                className={`cm-audio__bar ${filled ? 'cm-audio__bar--filled' : ''} ${isPlaying ? 'cm-audio__bar--animated' : ''}`}
+                style={{
+                  height: `${h * 100}%`,
+                  animationDelay: `${i * 0.04}s`,
+                }}
+              />
+            );
+          })}
+        </div>
+        {/* Progress overlay */}
+        <div className="cm-audio__progress-track">
+          <div className="cm-audio__progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+
+      {/* Time */}
+      <span className="cm-audio__time">
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </span>
+
+      {/* More actions */}
+      <button
+        className="cm-audio__more-btn"
+        onClick={() => setShowActions(p => !p)}
+        aria-label="Audio actions"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+
+      {showActions && (
+        <div className="cm-audio__actions">
+          <button
+            className="cm-audio__action-btn"
+            onClick={() => { audioRef.current?.pause(); setIsPlaying(false); onStop?.(); setShowActions(false); }}
+          >
+            <Square size={14} style={{ marginRight: '6px' }} /> {stopLabel}
+          </button>
+          <button
+            className="cm-audio__action-btn cm-audio__action-btn--danger"
+            onClick={() => { audioRef.current?.pause(); onDelete?.(); setShowActions(false); }}
+          >
+            <Trash2 size={14} style={{ marginRight: '6px' }} /> {deleteLabel}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Individual chat message bubble.
@@ -28,8 +176,6 @@ export default function ChatMessage({
   const isUser = message.role === 'user';
   const isStatus = message.role === 'status';
   const t = UI_TEXT[language] || UI_TEXT.en;
-  const audioElRef = useRef(null);
-  const [showAudioActions, setShowAudioActions] = useState(false);
 
   // Parse markdown for AI messages
   const renderedContent = useMemo(() => {
@@ -50,15 +196,9 @@ export default function ChatMessage({
         }`}
       >
         {isUser ? (
-          // User avatar icon
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-          </svg>
+          <User size={20} />
         ) : (
-          // AI avatar — leaf/plant icon
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.5S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8z" />
-          </svg>
+          <Bot size={20} />
         )}
       </div>
 
@@ -81,60 +221,13 @@ export default function ChatMessage({
           )}
 
           {!!message.audio_url && (
-            <div className="chat-message__audio">
-              <div
-                className="chat-message__audio-player"
-                onClick={() => setShowAudioActions(true)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') setShowAudioActions(true);
-                }}
-                aria-label="Audio message"
-              >
-                <audio
-                  ref={audioElRef}
-                  controls
-                  src={`http://127.0.0.1:8000${message.audio_url}`}
-                  preload="none"
-                />
-              </div>
-
-              {showAudioActions && (
-                <div className="chat-message__audio-actions">
-                  <button
-                    type="button"
-                    className="chat-message__audio-btn"
-                    onClick={() => {
-                      try {
-                        audioElRef.current?.pause();
-                        if (audioElRef.current) audioElRef.current.currentTime = 0;
-                      } catch {
-                        // ignore
-                      }
-                      onStopAudio?.();
-                    }}
-                  >
-                    {t.stop}
-                  </button>
-                  <button
-                    type="button"
-                    className="chat-message__audio-btn chat-message__audio-btn--danger"
-                    onClick={() => {
-                      try {
-                        audioElRef.current?.pause();
-                      } catch {
-                        // ignore
-                      }
-                      onDeleteAudio?.(message.audio_url);
-                      setShowAudioActions(false);
-                    }}
-                  >
-                    {t.delete}
-                  </button>
-                </div>
-              )}
-            </div>
+            <AudioPlayer
+              src={`http://127.0.0.1:8000${message.audio_url}`}
+              stopLabel={t.stop}
+              deleteLabel={t.delete}
+              onStop={onStopAudio}
+              onDelete={() => onDeleteAudio?.(message.audio_url)}
+            />
           )}
         </div>
         {/* TTS Button for AI messages */}
@@ -144,7 +237,7 @@ export default function ChatMessage({
             onClick={() => onSpeak(message.text)}
             title={t.readAloud}
           >
-            
+            <Volume2 size={16} />
           </button>
         )}
       </div>

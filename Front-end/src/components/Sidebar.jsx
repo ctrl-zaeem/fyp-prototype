@@ -1,21 +1,22 @@
+import { History, Globe, Plus, MessageSquare } from 'lucide-react';
 import './Sidebar.css';
 
 // ─── UI text translations ────────────────────────────────────
 const UI_TEXT = {
-  en: { newChat: 'New Chat', history: '📜 Chat History', language: '🌐 Language', noHistory: 'No chats yet — start a conversation!' },
-  ur: { newChat: 'نئی چیٹ', history: '📜 چیٹ ہسٹری', language: '🌐 زبان', noHistory: 'ابھی کوئی چیٹ نہیں — بات شروع کریں!' },
-  sd: { newChat: 'نئين چيٽ', history: '📜 چيٽ جي تاريخ', language: '🌐 ٻولي', noHistory: 'اڃا ڪا چيٽ ناهي — ڳالهه شروع ڪريو!' },
-  pa: { newChat: 'نویں چیٹ', history: '📜 چیٹ ریکارڈ', language: '🌐 بولی', noHistory: 'ہالے کوئی چیٹ نہیں — گل شروع کرو!' },
-  ps: { newChat: 'نوې خبرې', history: '📜 د خبرو تاریخ', language: '🌐 ژبه', noHistory: 'لا خبرې نشته — یوه خبره پیل کړئ!' }
+  en: { newChat: 'New Chat', history: 'Chat History', language: 'Language', noHistory: 'No chats yet — start a conversation!' },
+  ur: { newChat: 'نئی چیٹ', history: 'چیٹ ہسٹری', language: 'زبان', noHistory: 'ابھی کوئی چیٹ نہیں — بات شروع کریں!' },
+  sd: { newChat: 'نئين چيٽ', history: 'چيٽ جي تاريخ', language: 'ٻولي', noHistory: 'اڃا ڪا چيٽ ناهي — ڳالهه شروع ڪريو!' },
+  pa: { newChat: 'نویں چیٹ', history: 'چیٹ ریکارڈ', language: 'بولی', noHistory: 'ہالے کوئی چیٹ نہیں — گل شروع کرو!' },
+  ps: { newChat: 'نوې خبرې', history: 'د خبرو تاریخ', language: 'ژبه', noHistory: 'لا خبرې نشته — یوه خبره پیل کړئ!' }
 };
 
 // Language buttons config
 const LANG_BUTTONS = [
-  { code: 'en', label: '🇬🇧 English' },
-  { code: 'ur', label: '🇵🇰 اردو' },
-  { code: 'sd', label: '🇵🇰 سنڌي' },
-  { code: 'pa', label: '🇵🇰 پنجابی' },
-  { code: 'ps', label: '🇵🇰 پښتو' }
+  { code: 'en', label: 'English' },
+  { code: 'ur', label: 'اردو' },
+  { code: 'sd', label: 'سنڌي' },
+  { code: 'pa', label: 'پنجابی' },
+  { code: 'ps', label: 'پښتو' }
 ];
 
 /**
@@ -51,16 +52,16 @@ export default function Sidebar({
       <aside className={`sidebar ${isOpen ? 'sidebar--open' : ''}`}>
         {/* New Chat Button */}
         <button className="sidebar__new-chat" onClick={onNewChat}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          <Plus size={18} />
           {t.newChat}
         </button>
 
         {/* Chat History */}
         <div className="sidebar__history">
-          <h3 className="sidebar__section-title">{t.history}</h3>
+          <h3 className="sidebar__section-title">
+            <History size={16} style={{ marginRight: '6px', display: 'inline-block', verticalAlign: 'text-bottom' }} />
+            {t.history}
+          </h3>
           {chatHistory.length === 0 ? (
             <p className="sidebar__empty-hint">{t.noHistory}</p>
           ) : (
@@ -73,9 +74,7 @@ export default function Sidebar({
                     className={`sidebar__chat-item ${activeChatId === chat.id ? 'sidebar__chat-item--active' : ''}`}
                     onClick={() => onSelectChat(chat.id)}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
+                    <MessageSquare size={16} style={{ flexShrink: 0 }} />
                     <span className="sidebar__chat-title">{chat.title}</span>
                   </div>
                 ))}
@@ -87,13 +86,23 @@ export default function Sidebar({
         {/* Language Selector */}
         <div className="sidebar__footer">
           <div className="sidebar__language">
-            <h3 className="sidebar__section-title">{t.language}</h3>
+            <h3 className="sidebar__section-title">
+              <Globe size={16} style={{ marginRight: '6px', display: 'inline-block', verticalAlign: 'text-bottom' }} />
+              {t.language}
+            </h3>
             <div className="sidebar__language-buttons">
               {LANG_BUTTONS.map(btn => (
                 <button
                   key={btn.code}
                   className={`sidebar__lang-btn ${language === btn.code ? 'sidebar__lang-btn--active' : ''}`}
-                  onClick={() => onLanguageChange(btn.code)}
+                  onClick={() => {
+                    if (btn.code !== language) {
+                      // Persist chosen language then hard-reload so all state resets cleanly
+                      localStorage.setItem('agri_lang', btn.code);
+                      onLanguageChange(btn.code);
+                      setTimeout(() => window.location.reload(), 80);
+                    }
+                  }}
                 >
                   {btn.label}
                 </button>
@@ -103,8 +112,9 @@ export default function Sidebar({
 
           {/* App Info */}
           <div className="sidebar__app-info">
-            <span>AI Agriculture Assistant v1.0</span>
-            <span>Final Year Project 2026</span>
+            <span>Made By 22k4023 Zaeem ul Haq</span>
+            <span>22k4107 Farooq Ahmed Shah</span>
+            <span>22k4061 Huzaifa Shehzad</span>
           </div>
         </div>
       </aside>
