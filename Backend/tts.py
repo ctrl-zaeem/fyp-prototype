@@ -1,10 +1,14 @@
 """
-Text-to-speech (TTS) utilities using Google TTS (gTTS).
+Text-to-speech (TTS) utilities using Google TTS (gTTS) / Edge TTS.
 
 Responsibilities:
-- Map logical language names to gTTS language codes.
+- Map logical language names to gTTS / Edge TTS language codes.
+- For Sindhi, Punjabi, and Pashto: automatically transliterate regional
+  Arabic-script text into standard Urdu letters before synthesis, because
+  the available TTS voices (ur-PK-UzmaNeural, etc.) can only pronounce
+  standard Urdu phonemes correctly.
 - Convert text to speech and save as WAV file.
-- Handle gTTS API calls and error handling.
+- Handle TTS API calls and error handling.
 """
 
 import os
@@ -284,7 +288,24 @@ def text_to_speech(text: str, lang: str, output_path: Optional[str] = None) -> s
         raise ValueError("text_to_speech called with text that became empty after normalization.")
 
     output_path = output_path or config.OUTPUT_WAV_PATH
-    
+
+    # -------------------------------------------------------------------
+    # For regional languages whose TTS voice is actually an Urdu engine,
+    # transliterate the text into standard Urdu letters so the voice can
+    # pronounce every character correctly.
+    # -------------------------------------------------------------------
+    _REGIONAL_LANGS = {"sindhi", "punjabi", "pashto", "balochi"}
+    lang_lower = (lang or "").strip().lower()
+    if lang_lower in _REGIONAL_LANGS:
+        try:
+            import translate as _translate_mod  # lazy import to avoid circular dependency
+            transliterated = _translate_mod.transliterate_regional_for_tts(text, lang_lower)
+            if transliterated and transliterated.strip():
+                print(f"[TTS] Transliterated {lang} → Urdu letters for TTS ({len(text)} → {len(transliterated)} chars)")
+                text = transliterated
+        except Exception as _te:
+            print(f"[TTS] Warning: transliteration for {lang} failed ({_te}); using original text.")
+
     # Ensure output directory exists (handle both absolute and relative paths)
     output_dir = os.path.dirname(output_path)
     if output_dir:  # Only create directory if path contains a directory component

@@ -291,22 +291,11 @@ def main() -> None:
                 # Step 2: Translation (only if transcription is done)
                 if st.session_state.processing_step == 'translating' and 'transcribed_text' in st.session_state:
                     with st.spinner("Translating..."):
+                        # Two-step pipeline handles Sindhi/Punjabi/Pashto internally.
+                        # Output is always correct Arabic script — use same text for display and TTS.
                         translated = translate.translate_text(st.session_state.transcribed_text, target_lang=target_lang)
-                        # For Punjabi, render the LLM response itself in Shahmukhi (Urdu) script for display,
-                        # while keeping the Punjabi response for TTS.
-                        if target_lang == "punjabi":
-                            display_prompt = (
-                                "Convert the following Punjabi response into Shahmukhi (Urdu) script only. "
-                                "Do not change wording or meaning. "
-                                "Return only Punjabi in Shahmukhi script without explanations.\n\n"
-                                f"Punjabi response:\n{translated}"
-                            )
-                            display_translation = translate.translate_text(display_prompt, target_lang="punjabi")
-                            st.session_state.translated_text_display = display_translation
-                            st.session_state.translated_text_audio = translated
-                        else:
-                            st.session_state.translated_text_display = translated
-                            st.session_state.translated_text_audio = translated
+                        st.session_state.translated_text_display = translated
+                        st.session_state.translated_text_audio = translated
                         st.session_state.processing_step = 'synthesizing'
                         st.rerun()
                 
@@ -348,8 +337,8 @@ def main() -> None:
                 if 'translated_text_display' in st.session_state and st.session_state.translated_text_display:
                     st.markdown("####  Step 2: Translated Text")
                     translated_display = st.session_state.translated_text_display
-                    # Show Urdu-style box for Urdu or Punjabi (Punjabi displayed in Urdu script)
-                    if target_lang in ("urdu", "punjabi"):
+                    # RTL box for all Arabic-script languages; LTR only for English
+                    if target_lang in ("urdu", "punjabi", "sindhi", "pashto"):
                         st.markdown(
                             f'<div class="urdu-text" dir="rtl">{translated_display}</div>',
                             unsafe_allow_html=True
@@ -419,22 +408,11 @@ def main() -> None:
             # Step 2: Translation (only if transcription is done)
             if st.session_state.upload_processing_step == 'translating' and 'upload_transcribed_text' in st.session_state:
                 with st.spinner(" Translating text..."):
+                    # Two-step pipeline handles Sindhi/Punjabi/Pashto internally.
+                    # Output is always correct Arabic script — use same text for display and TTS.
                     translated = translate.translate_text(st.session_state.upload_transcribed_text, target_lang=target_lang)
-                    # For Punjabi, render the LLM response itself in Shahmukhi (Urdu) script for display,
-                    # while keeping the Punjabi response for TTS.
-                    if target_lang == "punjabi":
-                        display_prompt = (
-                            "Convert the following Punjabi response into Shahmukhi (Urdu) script only. "
-                            "Do not change wording or meaning. "
-                            "Return only Punjabi in Shahmukhi script without explanations.\n\n"
-                            f"Punjabi response:\n{translated}"
-                        )
-                        display_translation = translate.translate_text(display_prompt, target_lang="punjabi")
-                        st.session_state.upload_translated_text_display = display_translation
-                        st.session_state.upload_translated_text_audio = translated
-                    else:
-                        st.session_state.upload_translated_text_display = translated
-                        st.session_state.upload_translated_text_audio = translated
+                    st.session_state.upload_translated_text_display = translated
+                    st.session_state.upload_translated_text_audio = translated
                     st.session_state.upload_processing_step = 'synthesizing'
                     st.rerun()
             
@@ -469,8 +447,8 @@ def main() -> None:
                 if 'upload_translated_text_display' in st.session_state and st.session_state.upload_translated_text_display:
                     st.markdown("####  Step 2: Translated Text")
                     translated_display = st.session_state.upload_translated_text_display
-                    # Show Urdu-style box for Urdu or Punjabi (Punjabi displayed in Urdu script)
-                    if target_lang in ("urdu", "punjabi"):
+                    # RTL box for all Arabic-script languages; LTR only for English
+                    if target_lang in ("urdu", "punjabi", "sindhi", "pashto"):
                         st.markdown(
                             f'<div class="urdu-text" dir="rtl">{translated_display}</div>',
                             unsafe_allow_html=True

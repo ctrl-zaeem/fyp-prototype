@@ -100,14 +100,9 @@ def get_weather(lat: float, lon: float):
 def translate_text_api(req: TranslateTextRequest):
     translated = translate.translate_text(req.text, req.target_lang)
 
-    tts_text = translated
-    lang_lower = req.target_lang.lower().strip()
-    if lang_lower in {"sindhi", "pashto", "balochi"}:
-        tts_text = translate.transliterate_regional_for_tts(translated, lang_lower)
-
     rel = f"output_{int(time.time())}.wav"
     filename = str(_AUDIO_DIR / rel)
-    tts.text_to_speech(tts_text, lang=req.target_lang, output_path=filename)
+    tts.text_to_speech(translated, lang=req.target_lang, output_path=filename)
     tts_engine = getattr(tts, "get_last_tts_engine_info", lambda: "Unknown")()
 
     return {
@@ -178,13 +173,9 @@ def speech_to_speech_record(
             elif _needs_script_normalization(text) and target_lang in {"urdu", "sindhi", "punjabi", "balochi"}:
                 display_text = normalizer(text, target_lang)
 
-        tts_text = translated
-        if target_lang in {"sindhi", "pashto", "balochi"}:
-            tts_text = translate.transliterate_regional_for_tts(translated, target_lang)
-
         rel = f"output_{int(time.time())}.wav"
         out_path = str(_AUDIO_DIR / rel)
-        tts.text_to_speech(tts_text, lang=target_lang, output_path=out_path)
+        tts.text_to_speech(translated, lang=target_lang, output_path=out_path)
         tts_engine = getattr(tts, "get_last_tts_engine_info", lambda: "Unknown")()
 
         return {
