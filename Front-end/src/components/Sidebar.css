@@ -88,6 +88,7 @@
 .sidebar__chat-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
@@ -96,6 +97,38 @@
   transition: all 0.2s ease;
   font-size: 13px;
   margin-bottom: 2px;
+}
+
+.sidebar__chat-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar__chat-delete {
+  background: none;
+  border: none;
+  color: rgba(165, 214, 167, 0.45);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.sidebar__chat-item:hover .sidebar__chat-delete {
+  opacity: 1;
+}
+
+.sidebar__chat-delete:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ff6b6b;
 }
 
 .sidebar__chat-item:hover {

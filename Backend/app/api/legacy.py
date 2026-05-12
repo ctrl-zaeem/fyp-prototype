@@ -19,6 +19,14 @@ import translate
 import tts
 from app.config import settings
 from app.models.schemas import DeleteAudioRequest, TranslateTextRequest
+import json
+from pydantic import BaseModel
+
+class AgronomyRequest(BaseModel):
+    lat: float
+    lon: float
+    month: str
+    language: str
 
 router = APIRouter(tags=["legacy"])
 
@@ -95,10 +103,55 @@ def get_weather(lat: float, lon: float):
     except Exception:
         raise HTTPException(status_code=502, detail="Unexpected response from weather provider")
 
+@router.get("/weather-forecast-10")
+def get_weather_forecast_10(lat: float, lon: float):
+    api_key = (os.getenv("OPENWEATHER_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="OPENWEATHER_API_KEY is not configured on the server.",
+        )
+    # OpenWeatherMap standard 5-day / 3-hour forecast returns 40 items. 
+    # Try the daily forecast API, and fallback to the 3-hour one if unauthorized.
+    url_daily = "https://api.openweathermap.org/data/2.5/forecast/daily"
+    url_hourly = "https://api.openweathermap.org/data/2.5/forecast"
+    try:
+        resp = requests.get(
+            url_daily,
+            params={"lat": lat, "lon": lon, "cnt": 10, "appid": api_key, "units": "metric"},
+            timeout=10,
+        )
+        if resp.status_code == 401:
+            resp = requests.get(
+                url_hourly,
+                params={"lat": lat, "lon": lon, "appid": api_key, "units": "metric"},
+                timeout=10,
+            )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Weather service unreachable: {str(e)}") from e
+
+@router.get("/market-rates-data")
+def get_market_rates():
+    json_path = Path(__file__).resolve().parent.parent.parent.parent / "datasets" / "market_price.json"
+    if not json_path.exists():
+        raise HTTPException(status_code=404, detail="Market prices data not found")
+    with open(json_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+@router.post("/agronomy-advice")
+def get_agronomy_advice(req: AgronomyRequest):
+    prompt = f"Provide generic agronomy advice covering soil health, irrigation, pest management, and crop growth for the month of {req.month} at location {req.lat},{req.lon}. Keep it concise."
+    try:
+        translated = translate.translate_text(prompt, req.language)
+        return {"advice": translated}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 @router.post("/translate-text")
 def translate_text_api(req: TranslateTextRequest):
-    translated = translate.translate_text(req.text, req.target_lang)
+    translated = translate.translate_text(req.text, req.target_lang, extra_context=req.context_info)
 
     rel = f"output_{int(time.time())}.wav"
     filename = str(_AUDIO_DIR / rel)
@@ -148,6 +201,7 @@ def delete_audio(req: DeleteAudioRequest):
 def speech_to_speech_record(
     file: UploadFile = File(...),
     target_lang: str = "urdu",
+    context_info: str = "",
 ):
     input_path = f"temp_{int(time.time())}.webm"
     wav_path = f"temp_{int(time.time())}.wav"
@@ -163,7 +217,7 @@ def speech_to_speech_record(
         if not text:
             return {"error": "No speech detected"}
 
-        translated = translate.translate_text(text, target_lang)
+        translated = translate.translate_text(text, target_lang, extra_context=context_info)
 
         display_text = text
         normalizer = getattr(translate, "normalize_transcript_for_display", None)

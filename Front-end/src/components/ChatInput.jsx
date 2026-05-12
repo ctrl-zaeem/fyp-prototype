@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { placeholderTexts, quickReplyChips } from '../data/responses';
 import * as LucideIcons from 'lucide-react';
-import { Send, Mic, Square, Paperclip } from 'lucide-react';
+import { Send, Mic, Square, Paperclip, Trash2 } from 'lucide-react';
 import './ChatInput.css';
 
 const UI_TEXT = {
@@ -51,7 +51,12 @@ export default function ChatInput({
   disabled,
   onUploadComplete,
   onToggleMic,
-  isRecording
+  isRecording,
+  onAction,
+  contextInfo,
+  recordedAudioBlob,
+  onCancelAudio,
+  onSendAudio
 }){
 
   const [input, setInput] = useState('');
@@ -106,7 +111,7 @@ export default function ChatInput({
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/speech-to-speech-record?target_lang=${langMap[language]}`,
+        `http://127.0.0.1:8000/speech-to-speech-record?target_lang=${langMap[language]}&context_info=${encodeURIComponent(contextInfo || '')}`,
         {
           method: "POST",
           body: formData
@@ -146,7 +151,7 @@ export default function ChatInput({
             <button
               key={i}
               className="chat-input__chip"
-              onClick={() => onSend(chip.query)}
+              onClick={() => onAction && onAction(chip.action)}
               disabled={disabled}
             >
               <IconComponent size={14} className="chat-input__chip-icon" />
@@ -164,46 +169,65 @@ export default function ChatInput({
 
       {/* ✅ YOUR ORIGINAL UI (UNCHANGED) */}
       <div className="chat-input__container">
+        
+        {!recordedAudioBlob && (
+          <button
+            className={`chat-input__icon-btn ${isRecording ? 'chat-input__icon-btn--recording' : ''}`}
+            onClick={onToggleMic}
+            type="button"
+            aria-label={isRecording ? "Stop recording" : "Start voice input"}
+            title={isRecording ? "Click to stop" : "Click to speak"}
+          >
+            {isRecording ? (
+              <Square size={18} fill="currentColor" />
+            ) : (
+              <Mic size={18} />
+            )}
+          </button>
+        )}
 
-        {/* 🎤 MIC BUTTON */}
-        <button
-          className={`chat-input__icon-btn ${isRecording ? 'chat-input__icon-btn--recording' : ''}`}
-          onClick={onToggleMic}
-          type="button"
-          aria-label={isRecording ? "Stop recording" : "Start voice input"}
-          title={isRecording ? "Click to stop" : "Click to speak"}
-        >
-          {isRecording ? (
-            <Square size={18} fill="currentColor" />
-          ) : (
-            <Mic size={18} />
-          )}
-        </button>
-        {/* 📎 UPLOAD BUTTON (UNCHANGED) */}
-        <button
-          className="chat-input__icon-btn"
-          onClick={handleAudioClick}
-          type="button"
-          aria-label="Attach file"
-        >
-          <Paperclip size={18} />
-        </button>
+        {!recordedAudioBlob && !isRecording && (
+          <button
+            className="chat-input__icon-btn"
+            onClick={handleAudioClick}
+            type="button"
+            aria-label="Attach file"
+          >
+            <Paperclip size={18} />
+          </button>
+        )}
 
         <input
-  ref={fileInputRef}
-  type="file"
-  accept="audio/*"
-  onChange={(e) => {
-    console.log("INPUT TRIGGERED");
-    handleAudioUpload(e);
-  }}
-  style={{ display: "none" }}
-/>
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={(e) => {
+            console.log("INPUT TRIGGERED");
+            handleAudioUpload(e);
+          }}
+          style={{ display: "none" }}
+        />
 
-        {isRecording ? (
-          <div className="chat-input__recording-overlay" dir={isRTL ? 'rtl' : 'ltr'}>
+        {recordedAudioBlob ? (
+          <div className="chat-input__recording-overlay" dir={isRTL ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <button className="chat-input__icon-btn" onClick={onCancelAudio} type="button" title="Discard">
+              <Trash2 size={18} color="#ff4d4f" />
+            </button>
+            <span style={{ flex: 1, padding: '0 12px', fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+              Audio ready to send
+            </span>
+          </div>
+        ) : isRecording ? (
+          <div className="chat-input__recording-overlay" dir={isRTL ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
             <div className="chat-input__recording-dot"></div>
-            {t.recording}
+            <span>{t.recording}</span>
+            <div style={{ flex: 1 }}></div>
+            <button className="chat-input__icon-btn" onClick={onCancelAudio} type="button" title="Cancel recording" style={{marginRight: '8px'}}>
+              <Trash2 size={18} color="#ff4d4f" />
+            </button>
+            <button className="chat-input__icon-btn" onClick={onToggleMic} type="button" title="Stop recording">
+              <Square size={18} fill="currentColor" color="var(--text-secondary)" />
+            </button>
           </div>
         ) : (
           <textarea
@@ -218,16 +242,26 @@ export default function ChatInput({
           />
         )}
 
-        {/* ➤ SEND BUTTON (UNCHANGED) */}
-        <button
-          className="chat-input__send-btn"
-          onClick={handleSend}
-          disabled={!input.trim() || disabled}
-          type="button"
-        >
-          <Send size={18} />
-        </button>
-
+        {recordedAudioBlob ? (
+          <button
+            className="chat-input__send-btn"
+            onClick={onSendAudio}
+            disabled={disabled}
+            type="button"
+            style={{ background: 'var(--primary)', color: 'white' }}
+          >
+            <Send size={18} />
+          </button>
+        ) : (
+          <button
+            className="chat-input__send-btn"
+            onClick={handleSend}
+            disabled={!input.trim() || disabled || isRecording}
+            type="button"
+          >
+            <Send size={18} />
+          </button>
+        )}
       </div>
 
       <p className="chat-input__disclaimer">

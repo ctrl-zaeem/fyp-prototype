@@ -45,6 +45,7 @@ class HealthResponse(BaseModel):
 class TranslateTextRequest(BaseModel):
     text: str
     target_lang: str
+    context_info: str | None = None
 
 
 class DeleteAudioRequest(BaseModel):

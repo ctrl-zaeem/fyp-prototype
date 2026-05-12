@@ -5,6 +5,7 @@ import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
 import TypingIndicator from './components/TypingIndicator';
 import WelcomeScreen from './components/WelcomeScreen';
+import FeatureModal from './components/FeatureModal';
 import {
   suggestions,
   urduSuggestions,
@@ -35,7 +36,14 @@ export default function App() {
   // 💬 Chat state
   const [messages, setMessages] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
-  const [chatHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem("agri_chats");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // ☁️ Weather state
   const [weather, setWeather] = useState(null);
@@ -44,9 +52,14 @@ export default function App() {
 
   // 🎛 UI state
   const [isTyping, setIsTyping] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [language, setLanguage] = useState(() => localStorage.getItem('agri_lang') || 'en');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState(null);
+  const [activeFeature, setActiveFeature] = useState(null);
+
+  const isCancelingRef = useRef(false);
 
   const chatAreaRef = useRef(null);
   const audioRef = useRef(null); // currently playing audio (for Stop)
@@ -204,69 +217,18 @@ export default function App() {
       };
 
       mediaRecorder.onstop = async () => {
-        // Recording is already stopped; update UI immediately and release mic.
         setIsRecording(false);
         streamRef.current?.getTracks().forEach(t => t.stop());
 
-        const statusId = Date.now() + 100;
-        setMessages(prev => [
-          ...prev,
-          {
-            id: statusId,
-            role: "status",
-            text: "Processing voice… (transcribe → translate → generate audio)",
-            time: getTimestamp()
-          }
-        ]);
-
-        try {
-          setIsTyping(true);
-          const audioBlob = new Blob(audioChunksRef.current, {
-            type: "audio/webm"
-          });
-
-          const formData = new FormData();
-          formData.append("file", audioBlob, "voice.webm");
-
-          const response = await fetch(
-            `http://127.0.0.1:8000/speech-to-speech-record?target_lang=${langMap[language]}`,
-            {
-              method: "POST",
-              body: formData
-            }
-          );
-
-          const data = await response.json();
-
-          setMessages(prev => [
-            ...prev.filter(m => m.id !== statusId),
-            {
-              id: Date.now(),
-              role: "user",
-              text: data.original_text || "Voice message",
-              time: getTimestamp()
-            },
-            {
-              id: Date.now() + 1,
-              role: "ai",
-              text: data.translated_text || "No response",
-              time: getTimestamp(),
-              audio_url: data.audio_url || null,
-            }
-          ]);
-
-          if (data.audio_url) {
-            const audio = new Audio(`http://127.0.0.1:8000${data.audio_url}`);
-            audioRef.current = audio;
-            audio.play().catch(() => {});
-          }
-
-        } catch (err) {
-          console.error("Voice error:", err);
-          setMessages(prev => prev.filter(m => m.id !== statusId));
-        } finally {
-          setIsTyping(false);
+        if (isCancelingRef.current) {
+          isCancelingRef.current = false;
+          return;
         }
+
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm"
+        });
+        setRecordedAudioBlob(audioBlob);
       };
 
       mediaRecorder.start();
@@ -279,14 +241,77 @@ export default function App() {
 
   const stopRecording = () => {
     const mediaRecorder = mediaRecorderRef.current;
-    if (!mediaRecorder) return;
-
-    if (mediaRecorder.state === "recording") {
-      // Immediately update UI so user doesn't think it's "frozen"
-      setIsRecording(false);
+    if (mediaRecorder && mediaRecorder.state === "recording") {
       mediaRecorder.stop();
     }
   };
+
+  const cancelRecording = () => {
+    const mediaRecorder = mediaRecorderRef.current;
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      isCancelingRef.current = true;
+      mediaRecorder.stop();
+    }
+    setRecordedAudioBlob(null);
+  };
+
+  const sendRecordedAudio = async () => {
+    if (!recordedAudioBlob) return;
+    const blobToSend = recordedAudioBlob;
+    setRecordedAudioBlob(null);
+
+    let currentId = activeChatId;
+    if (!currentId) {
+      currentId = Date.now();
+      setActiveChatId(currentId);
+    }
+
+    try {
+      setIsProcessingVoice(true);
+      const formData = new FormData();
+      formData.append("file", blobToSend, "voice.webm");
+
+      const currentContext = `Month: ${new Date().toLocaleString('en-US', { month: 'long' })}, Location: ${weather?.city || 'Unknown'}`;
+      const response = await fetch(
+        `http://127.0.0.1:8000/speech-to-speech-record?target_lang=${langMap[language]}&context_info=${encodeURIComponent(currentContext)}`,
+        {
+          method: "POST",
+          body: formData
+        }
+      );
+
+      const data = await response.json();
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: "user",
+          text: data.original_text || "Voice message",
+          time: getTimestamp()
+        },
+        {
+          id: Date.now() + 1,
+          role: "ai",
+          text: data.translated_text || "No response",
+          time: getTimestamp(),
+          audio_url: data.audio_url || null,
+        }
+      ]);
+
+      if (data.audio_url) {
+        const audio = new Audio(`http://127.0.0.1:8000${data.audio_url}`);
+        audioRef.current = audio;
+        audio.play().catch(() => {});
+      }
+
+    } catch (err) {
+      console.error("Voice error:", err);
+    } finally {
+      setIsProcessingVoice(false);
+    }
+  };
+
 
   // 💬 TEXT SEND
   const handleSend = useCallback(async (text) => {
@@ -311,7 +336,8 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          target_lang: langMap[language]
+          target_lang: langMap[language],
+          context_info: `Month: ${new Date().toLocaleString('en-US', { month: 'long' })}, Location: ${weather?.city || 'Unknown'}`
         })
       });
 
@@ -359,6 +385,62 @@ export default function App() {
     setLanguage(lang);
   }, []);
 
+  const handleSelectChat = useCallback((id) => {
+    setActiveChatId(id);
+    const selected = chatHistory.find(c => c.id === id);
+    if (selected) {
+      setMessages(selected.messages || []);
+    } else {
+      setMessages([]);
+    }
+  }, [chatHistory]);
+
+  const handleDeleteChat = useCallback((id) => {
+    setChatHistory(prev => prev.filter(c => c.id !== id));
+    if (activeChatId === id) {
+      setMessages([]);
+      setActiveChatId(null);
+    }
+  }, [activeChatId]);
+
+  // Sync messages with chatHistory
+  useEffect(() => {
+    if (!activeChatId || messages.length === 0) return;
+
+    setChatHistory(prev => {
+      const existingIdx = prev.findIndex(c => c.id === activeChatId);
+      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      if (existingIdx > -1) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          messages: messages
+        };
+        return updated;
+      } else {
+        const firstUserMsg = messages.find(m => m.role === 'user');
+        const firstText = firstUserMsg ? firstUserMsg.text : "Audio Chat";
+        const title = firstText.slice(0, 30) + (firstText.length > 30 ? "..." : "");
+
+        return [
+          {
+            id: activeChatId,
+            title,
+            date: dateStr,
+            messages: messages
+          },
+          ...prev
+        ];
+      }
+    });
+  }, [messages, activeChatId]);
+
+  // Save chatHistory to localStorage
+  useEffect(() => {
+    localStorage.setItem("agri_chats", JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
   const currentSuggestions = suggestionMap[language] || suggestions;
 
   return (
@@ -373,7 +455,8 @@ export default function App() {
           setMessages([]);
           setActiveChatId(null);
         }}
-        onSelectChat={(id) => setActiveChatId(id)}
+        onSelectChat={handleSelectChat}
+        onDeleteChat={handleDeleteChat}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(p => !p)}
       />
@@ -394,7 +477,7 @@ export default function App() {
 
         <div className="app__chat-area" ref={chatAreaRef}>
 
-          {messages.length === 0 ? (
+          {messages.length === 0 && !isTyping && !isProcessingVoice ? (
             <WelcomeScreen
               language={language}
             />
@@ -411,7 +494,9 @@ export default function App() {
                 />
               ))}
 
-              {isTyping && <TypingIndicator language={language} />}
+              {(isTyping || isProcessingVoice) && (
+                <TypingIndicator language={language} mode={isProcessingVoice ? 'voice' : 'text'} />
+              )}
 
             </div>
           )}
@@ -424,9 +509,18 @@ export default function App() {
   disabled={isTyping}
   onToggleMic={toggleRecording}
   isRecording={isRecording}
+  recordedAudioBlob={recordedAudioBlob}
+  onCancelAudio={cancelRecording}
+  onSendAudio={sendRecordedAudio}
+  contextInfo={`Month: ${new Date().toLocaleString('en-US', { month: 'long' })}, Location: ${weather?.city || 'Unknown'}`}
+  onAction={(action) => setActiveFeature(action)}
   onUploadComplete={(data) => {
+    let currentId = activeChatId;
+    if (!currentId) {
+      currentId = Date.now();
+      setActiveChatId(currentId);
+    }
 
-    // user message (original text)
     setMessages(prev => [
       ...prev,
       {
@@ -434,12 +528,7 @@ export default function App() {
         role: "user",
         text: data.original_text || "Audio message",
         time: getTimestamp()
-      }
-    ]);
-
-    // AI message
-    setMessages(prev => [
-      ...prev,
+      },
       {
         id: Date.now() + 1,
         role: "ai",
@@ -458,6 +547,13 @@ export default function App() {
   }}
 />
       </main>
+      {activeFeature && (
+        <FeatureModal
+          feature={activeFeature}
+          language={language}
+          onClose={() => setActiveFeature(null)}
+        />
+      )}
     </div>
   );
 }

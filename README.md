@@ -69,13 +69,13 @@ Open a terminal and run:
 ollama serve
 
 # In a NEW terminal window, pull the LLM used for translation & Q&A
-ollama pull qwen3.5
+ollama pull gemma3:4b
 
 # Pull the embedding model used for RAG document retrieval
 ollama pull nomic-embed-text
 ```
 
-> **Note:** `qwen3.5` can be swapped for another model (e.g. `gemma3:4b`) by editing `OLLAMA_MODEL` in `Backend/.env`.
+> **Note:** `gemma3:4b` can be swapped for another model by editing `OLLAMA_MODEL` in `Backend/.env`.
 
 ---
 
@@ -118,7 +118,7 @@ Open `Backend/.env` and update as needed:
 ```env
 # Local Ollama LLM (for translation and agricultural Q&A)
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen3.5
+OLLAMA_MODEL=gemma3:4b
 
 # Embedding model (for RAG retrieval)
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
@@ -236,14 +236,14 @@ User Input (text or voice)
 [Speech-to-Text]  ← Whisper (medium model, local)
        │
        ▼
-[Translation to English]  ← Ollama (qwen3.5, local)
+[Translation to English]  ← Ollama (gemma3:4b, local)
        │
        ▼
 [RAG Retrieval]  ← ChromaDB + nomic-embed-text embeddings
   (searches pak_sft_train.jsonl knowledge base)
        │
        ▼
-[Answer Generation]  ← Ollama (qwen3.5, agricultural expert prompt)
+[Answer Generation]  ← Ollama (gemma3:4b, agricultural expert prompt)
        │
        ▼
 [Translation to User's Language]  ← Ollama
@@ -310,7 +310,7 @@ AI Response (text + audio playback)
 
 ## 📝 Development Notes
 
-- **Models used:** `qwen3.5` (or `gemma3:4b`) for LLM, `nomic-embed-text` for embeddings, Whisper `medium` for STT.
+- **Models used:** `gemma3:4b` for LLM, `nomic-embed-text` for embeddings, Whisper `medium` for STT.
 - **Dataset:** `datasets/pak_sft_train.jsonl` — a multilingual Pakistani agricultural SFT dataset used to build the RAG knowledge base.
 - **Audio files** are saved to `Backend/audio/` and served via `/audio/<filename>` static route.
 - The frontend talks to the backend at `http://127.0.0.1:8000` (hardcoded). If you change the backend port, update the URLs in `Front-end/src/App.jsx`.
