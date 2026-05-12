@@ -203,22 +203,50 @@ def speech_to_speech_record(
     target_lang: str = "urdu",
     context_info: str = "",
 ):
+    _P = "[PIPELINE]"
+    t_total = time.time()
+    print(f"\n{'='*70}")
+    print(f"{_P} === SPEECH-TO-SPEECH PIPELINE START ===")
+    print(f"{_P} target_lang={target_lang!r}  context_info={context_info[:80]!r}")
+    print(f"{'='*70}")
+
     input_path = f"temp_{int(time.time())}.webm"
     wav_path = f"temp_{int(time.time())}.wav"
 
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    fsize = os.path.getsize(input_path)
+    print(f"{_P} [1/5] File saved: {input_path} ({fsize} bytes)")
 
     try:
+        # --- Step 2: Convert to WAV ---
+        t0 = time.time()
         _convert_to_wav(input_path, wav_path)
+        print(f"{_P} [2/5] FFmpeg convert → {wav_path}  ({time.time()-t0:.2f}s)")
+
+        # --- Step 3: Whisper STT ---
         target_lang = target_lang.lower().strip()
+        t0 = time.time()
+        print(f"{_P} [3/5] Whisper STT starting (target_lang={target_lang!r})...")
         text, detected_lang = stt.speech_to_text(wav_path, target_lang=target_lang)
+        stt_dur = time.time() - t0
+        print(f"{_P} [3/5] Whisper STT done in {stt_dur:.2f}s")
+        print(f"{_P}        detected_lang={detected_lang!r}")
+        print(f"{_P}        transcription={text!r}")
 
         if not text:
+            print(f"{_P} *** No speech detected — aborting pipeline ***")
             return {"error": "No speech detected"}
 
-        translated = translate.translate_text(text, target_lang, extra_context=context_info)
+        # --- Step 4: LLM Translation ---
+        t0 = time.time()
+        print(f"{_P} [4/5] Translation starting (from_audio=True)...")
+        translated = translate.translate_text(text, target_lang, extra_context=context_info, from_audio=True)
+        translate_dur = time.time() - t0
+        print(f"{_P} [4/5] Translation done in {translate_dur:.2f}s")
+        print(f"{_P}        translated_text={translated[:120]!r}...")
 
+        # --- Display text normalization ---
         display_text = text
         normalizer = getattr(translate, "normalize_transcript_for_display", None)
         if callable(normalizer):
@@ -226,11 +254,24 @@ def speech_to_speech_record(
                 display_text = normalizer(text, target_lang)
             elif _needs_script_normalization(text) and target_lang in {"urdu", "sindhi", "punjabi", "balochi"}:
                 display_text = normalizer(text, target_lang)
+        if display_text != text:
+            print(f"{_P}        display_text (normalized)={display_text[:80]!r}")
 
+        # --- Step 5: TTS ---
         rel = f"output_{int(time.time())}.wav"
         out_path = str(_AUDIO_DIR / rel)
+        t0 = time.time()
+        print(f"{_P} [5/5] TTS starting (lang={target_lang!r})...")
         tts.text_to_speech(translated, lang=target_lang, output_path=out_path)
+        tts_dur = time.time() - t0
         tts_engine = getattr(tts, "get_last_tts_engine_info", lambda: "Unknown")()
+        print(f"{_P} [5/5] TTS done in {tts_dur:.2f}s  engine={tts_engine}")
+
+        total_dur = time.time() - t_total
+        print(f"{'='*70}")
+        print(f"{_P} === PIPELINE COMPLETE in {total_dur:.2f}s ===")
+        print(f"{_P}   STT={stt_dur:.2f}s | Translate={translate_dur:.2f}s | TTS={tts_dur:.2f}s")
+        print(f"{'='*70}\n")
 
         return {
             "original_text": display_text,

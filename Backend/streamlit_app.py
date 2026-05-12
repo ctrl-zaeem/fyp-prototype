@@ -291,7 +291,7 @@ def main() -> None:
                 # Step 2: Translation (only if transcription is done)
                 if st.session_state.processing_step == 'translating' and 'transcribed_text' in st.session_state:
                     with st.spinner("Translating..."):
-                        # Two-step pipeline handles Sindhi/Punjabi/Pashto internally.
+                        # Regional pipeline: question → English → answer in English → target script.
                         # Output is always correct Arabic script — use same text for display and TTS.
                         translated = translate.translate_text(st.session_state.transcribed_text, target_lang=target_lang)
                         st.session_state.translated_text_display = translated

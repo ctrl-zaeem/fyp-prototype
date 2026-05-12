@@ -75,7 +75,12 @@ def _target_lang_to_whisper_code(target_lang: Optional[str]) -> Optional[str]:
     Map app logical language names to Whisper language codes.
 
     Notes:
-    - Whisper doesn't have a dedicated Balochi code; we map it to Urdu script as a best-effort.
+    - Sindhi, Punjabi, and Pashto are transcribed as Urdu because Whisper's
+      native support for these low-resource languages is very poor (gibberish
+      output and extremely slow due to temperature-fallback loops).
+      Since these languages share similar phonetics with Urdu, Whisper's
+      well-trained Urdu model gives much better transcription quality.
+    - Balochi also maps to Urdu as a best-effort.
     """
     if not target_lang:
         return None
@@ -83,10 +88,16 @@ def _target_lang_to_whisper_code(target_lang: Optional[str]) -> Optional[str]:
     lang = target_lang.strip().lower()
     mapping = {
         "urdu": "ur",
+        "ur": "ur",
         "english": "en",
-        "punjabi": "pa",
-        "sindhi": "sd",
-        "pashto": "ps",
+        "en": "en",
+        # Regional languages -> transcribe as Urdu for quality
+        "punjabi": "ur",
+        "pa": "ur",
+        "sindhi": "ur",
+        "sd": "ur",
+        "pashto": "ur",
+        "ps": "ur",
         "balochi": "ur",
     }
     return mapping.get(lang)
@@ -105,17 +116,18 @@ def speech_to_text(audio_path: str, *, target_lang: Optional[str] = None) -> Tup
     print(f"Transcribing audio: {audio_path}")
     forced_code = _target_lang_to_whisper_code(target_lang)
     
+    # All regional languages are transcribed as Urdu, so use Urdu prompt
     initial_prompt = None
-    if target_lang == "sindhi":
-        initial_prompt = "هيءَ هڪ سنڌي عبارت آهي، جنهن کي عربي رسم الخط ۾ لکيو ويو آهي."
-    elif target_lang == "urdu":
+    target_lower = (target_lang or "").strip().lower()
+    if target_lower in ("sindhi", "punjabi", "pashto", "urdu", "balochi"):
         initial_prompt = "یہ اردو زبان کی عبارت ہے۔"
-    elif target_lang == "punjabi":
-        initial_prompt = "ایہ پنجابی زبان دی گل بات اے۔"
-    elif target_lang == "pashto":
-        initial_prompt = "دا د پښتو ژبې یوه جمله ده."
 
-    kwargs = {"fp16": False}
+    kwargs = {
+        "fp16": False,
+        "temperature": 0.0,                    # disable temperature fallback loops
+        "condition_on_previous_text": False,    # prevent hallucination carryover
+        "beam_size": 1,                         # greedy decoding for speed
+    }
     if forced_code:
         kwargs["language"] = forced_code
     if initial_prompt:

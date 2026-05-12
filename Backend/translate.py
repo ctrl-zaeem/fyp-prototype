@@ -1,12 +1,13 @@
 """
 Translation and text helpers using a local Ollama model (e.g. gemma3:4b).
 
-For Sindhi, Punjabi, and Pashto a reliable two-step pipeline is used:
-  1. Generate the agricultural answer in Urdu (which the LLM handles well).
-  2. Translate that Urdu answer into the target regional language with a
-     separate, strict translation call that enforces the correct Arabic script.
-This avoids the failure mode where the LLM tries to simultaneously reason
-and produce output in a low-resource language and gets the script wrong.
+For Sindhi, Punjabi, and Pashto a reliable pipeline is used:
+  1. Interpret the user's question in English (from regional / Perso-Arabic STT text).
+  2. Generate the agricultural answer in English (stable for local LLMs).
+  3. Translate that English answer into the target regional language with a
+     strict translation call that enforces the correct Arabic script.
+Speech input uses the same path as typed regional text (never skips the
+English understanding step).
 """
 
 from __future__ import annotations
@@ -333,40 +334,55 @@ def _normalize_punjabi_shahmukhi(text: str) -> str:
     return " ".join(out.split())
 
 
-def _translate_urdu_to_regional(
-    urdu_text: str,
+def _translate_answer_to_regional(
+    answer_text: str,
     target_lang: str,
     primary_model: str,
     log: Callable[[str], None],
+    *,
+    source_lang_name: str,
     original_question: str = "",
+    english_question: str = "",
 ) -> str:
     """
-    Dedicated translation step: convert a clean Urdu answer into the
-    target regional language (Sindhi / Punjabi / Pashto) with strict
-    Arabic-script enforcement.
+    Translate a clean English (or Urdu) expert answer into Sindhi / Punjabi /
+    Pashto with strict Arabic-script enforcement.
 
-    `original_question` (the user's raw question) is provided as extra
-    context so the LLM can verify the translation is topically relevant.
-    Falls back to the Urdu answer if the output appears garbled.
+    `original_question` is the raw transcript or typed user text (often
+    Perso-Arabic). `english_question` is the normalized English question when
+    available, so the model can align tone and facts.
+    Falls back to `answer_text` if the translation looks garbled.
     """
     target_lang_readable = _normalize_target_lang(target_lang)
     script_rule = _SCRIPT_RULES.get(target_lang.lower(), "Arabic/Perso-Arabic script")
     num_predict = getattr(config, "OLLAMA_NUM_PREDICT_CHAT", 512)
 
+    context_chunks: list[str] = []
+    if (original_question or "").strip():
+        context_chunks.append(
+            f"User question (original {target_lang_readable} script / transcript): "
+            f"\"{original_question.strip()}\""
+        )
+    if (english_question or "").strip():
+        context_chunks.append(
+            f"English understanding of the question: \"{english_question.strip()}\""
+        )
     context_note = ""
-    if original_question:
+    if context_chunks:
         context_note = (
-            f"\n\nContext: The user originally asked (in {target_lang_readable}): \"{original_question}\""
-            f"\nMake sure your {target_lang_readable} translation fully answers that question."
+            "\n\nContext:\n"
+            + "\n".join(context_chunks)
+            + f"\nEnsure the {target_lang_readable} translation fully answers that question "
+            "and preserves every fact from the source answer below."
         )
 
     system_prompt = (
-        f"You are a professional translator from Urdu to {target_lang_readable}. "
-        f"Translate the Urdu agricultural answer below into natural, conversational {target_lang_readable} "
-        f"suitable for Pakistani farmers. "
+        f"You are a professional translator from {source_lang_name} to {target_lang_readable}. "
+        f"Translate the {source_lang_name} agricultural answer below into natural, conversational "
+        f"{target_lang_readable} suitable for Pakistani farmers. "
         f"MANDATORY SCRIPT: Write EXCLUSIVELY in {script_rule} "
         f"Do NOT transliterate into Roman/Latin. "
-        f"Preserve ALL facts, crop names, and recommendations from the Urdu text exactly. "
+        f"Preserve ALL facts, crop names, and recommendations from the {source_lang_name} text exactly. "
         f"Do NOT add any explanation, prefix, or language label. "
         f"Output ONLY the translated {target_lang_readable} text. "
         f"Do NOT output Chinese or any other language."
@@ -374,10 +390,10 @@ def _translate_urdu_to_regional(
     )
     msgs = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Urdu answer to translate:\n{urdu_text}"},
+        {"role": "user", "content": f"{source_lang_name} answer to translate:\n{answer_text}"},
     ]
 
-    log(f"[2-step] Translating Urdu → {target_lang_readable}…")
+    log(f"[2-step] Translating {source_lang_name} → {target_lang_readable}…")
     last = ""
     for m in _models_to_try(primary_model):
         try:
@@ -395,23 +411,23 @@ def _translate_urdu_to_regional(
             continue
 
     if not last:
-        log("[2-step] Translation returned empty; falling back to Urdu answer.")
-        return urdu_text
+        log(f"[2-step] Translation returned empty; falling back to {source_lang_name} answer.")
+        return answer_text
 
     result = _strip_hallucinations(_strip_qwen_thinking_blocks(last))
     if not result:
-        return urdu_text
+        return answer_text
 
     # Quality gate: if the translation is drastically shorter than the
-    # Urdu source (< 30 % of word count), it likely got truncated/garbled.
-    urdu_words = len(urdu_text.split())
+    # source (< 30 % of word count), it likely got truncated/garbled.
+    src_words = len(answer_text.split())
     result_words = len(result.split())
-    if urdu_words >= 4 and result_words < max(2, urdu_words * 0.30):
+    if src_words >= 4 and result_words < max(2, src_words * 0.30):
         log(
-            f"[2-step] Quality gate failed ({result_words} words vs {urdu_words} Urdu words). "
-            "Falling back to Urdu answer."
+            f"[2-step] Quality gate failed ({result_words} words vs {src_words} source words). "
+            f"Falling back to {source_lang_name} answer."
         )
-        return urdu_text
+        return answer_text
 
     # Punjabi-specific guard: if Sindhi-heavy letters dominate, force one corrective rewrite.
     if target_lang.lower() == "punjabi":
@@ -460,6 +476,76 @@ def _translate_urdu_to_regional(
     return result
 
 
+def _translate_regional_to_english(
+    regional_text: str,
+    source_lang: str,
+    primary_model: str,
+    log: Callable[[str], None],
+) -> str:
+    """
+    Translate user input in a regional language (Sindhi / Punjabi / Pashto)
+    into clear English so the main reasoning LLM can understand it with
+    maximum accuracy and depth.
+    """
+    source_lang_readable = _normalize_target_lang(source_lang)
+    num_predict = getattr(config, "OLLAMA_NUM_PREDICT_CHAT", 512)
+
+    script_hints = {
+        "sindhi": "Sindhi (written in Perso-Arabic script used in Pakistan)",
+        "punjabi": "Punjabi (written in Shahmukhi/Perso-Arabic script used in Pakistan)",
+        "pashto": "Pashto (written in Pashto Arabic script)",
+    }
+    script_desc = script_hints.get(source_lang.strip().lower(), source_lang_readable)
+
+    system_prompt = (
+        f"You are a professional translator from {source_lang_readable} to English. "
+        f"Translate the {script_desc} text below into standard, clear, natural English. "
+        "The input may be from automatic speech recognition using Urdu-like spelling for "
+        f"{source_lang_readable} sounds—infer the farmer's intended agricultural question. "
+        "Keep the focus on agricultural, farming, and crop/soil context. "
+        "Preserve the original meaning, intent, crop names, and specific details perfectly. "
+        "Do NOT add any commentary, notes, translation labels, or conversational preambles. "
+        "Output ONLY the translated English text."
+    )
+    msgs = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": regional_text},
+    ]
+
+    src_key = source_lang.strip().lower()
+    log(f"[{src_key}-to-english] Translating {source_lang_readable} query to English...")
+    last = ""
+    for m in _models_to_try(primary_model):
+        try:
+            last = _ollama_chat(
+                messages=msgs,
+                model=m,
+                temperature=0.0,
+                think=False,
+                num_predict=num_predict,
+            )
+            if last:
+                break
+        except BaseException as e:
+            log(f"[{src_key}-to-english] Translation error ({m}): {e}")
+            continue
+
+    if not last:
+        log(f"[{src_key}-to-english] Translation returned empty; falling back to original text.")
+        return regional_text
+
+    result = _strip_hallucinations(_strip_qwen_thinking_blocks(last))
+    if not result:
+        return regional_text
+
+    log(f"[{src_key}-to-english] Translated text: '{result}'")
+    return result
+
+
+# Keep backward-compatible alias
+_translate_sindhi_to_english = _translate_regional_to_english
+
+
 def translate_text(
     text: str,
     target_lang: str,
@@ -468,13 +554,16 @@ def translate_text(
     progress_callback: Optional[Callable[[str], None]] = None,
     log_callback: Optional[Callable[[str], None]] = None,
     extra_context: str | None = None,
+    from_audio: bool = False,
 ) -> str:
     """
     Agricultural expert reply via local Ollama (Qwen, etc.).
 
-    For Sindhi, Punjabi, and Pashto a two-step pipeline is used:
-      Step 1 – Generate the answer in Urdu (reliable for the LLM).
-      Step 2 – Translate that Urdu answer into the target language
+    For Sindhi, Punjabi, and Pashto a three-step pipeline is used:
+      Step 1 – Translate the user's question to English (including speech
+               transcribed in Perso-Arabic as the regional language).
+      Step 2 – Generate the expert answer in English.
+      Step 3 – Translate that English answer into the target regional language
                using a dedicated strict translation call.
 
     `thinking` is ignored: the server always receives ``think=false``.
@@ -501,41 +590,61 @@ def translate_text(
     _LAST_TRANSLATE_LOGS.clear()
     _log(
         f"Target language: {target_lang_readable} | Model: {primary_model} | "
-        f"Pipeline: {'2-step' if target_lang_lower in _TWO_STEP_LANGUAGES else 'direct'}"
+        f"Pipeline: {'regional-via-English' if target_lang_lower in _TWO_STEP_LANGUAGES else 'direct'}"
     )
 
     num_predict = getattr(config, "OLLAMA_NUM_PREDICT_CHAT", 512)
 
     # ------------------------------------------------------------------
-    # TWO-STEP PIPELINE for Sindhi / Punjabi / Pashto
-    # Step 1: generate answer in Urdu
-    # Step 2: translate Urdu answer → target regional language
+    # REGIONAL PIPELINE (Sindhi / Punjabi / Pashto)
+    # Step 1: regional or Perso-Arabic STT text → English question
+    # Step 2: generate answer in English
+    # Step 3: translate English answer → target regional language
     # ------------------------------------------------------------------
     if target_lang_lower in _TWO_STEP_LANGUAGES:
-        urdu_system = (
-            "آپ ایک زرعی ماہر (AI زرعی معاون) ہیں۔ کسانوں سے بات چیت کے انداز میں بات کریں۔ "
-            "جواب بہت مختصر، سادہ اور براہ راست دیں۔ صرف 2 سے 4 لائنوں میں جواب دیں۔ "
-            "ہمیشہ اردو (نستعلیق) رسم الخط میں جواب دیں۔ "
+        english_system = (
+            "You are an Agricultural Expert named 'AI Agriculture Assistant'. "
+            "Answer the user's agricultural question in simple English. "
+            "Speak in a conversational tone suitable for farmers. "
+            "Keep your response short, simple, and direct—ideally 2 to 4 lines. "
             "CRITICAL: Do NOT output any chat markers like 'Human:' or 'Assistant:'. "
-            "Do NOT start with 'اردو میں:' or any language prefix. Provide ONLY your direct answer in Urdu."
+            "Provide ONLY your direct answer in English."
         )
         convo_rules = (
             "Talk like a real person: natural, brief, no meta-commentary. "
             "Do NOT use chain-of-thought, hidden reasoning, or any <think> / thinking tags. "
-            "Answer immediately in Urdu only."
+            "Answer immediately in English only."
         )
         if extra_context:
-            convo_rules += f"\n\nCONTEXT INFO: {extra_context}\nUse this context to give specific advice (e.g. best crop for this location/month) if relevant."
-        
-        urdu_msgs = [
-            {"role": "system", "content": urdu_system + "\n\n" + convo_rules},
-            {"role": "user", "content": text},
+            convo_rules += (
+                f"\n\nCONTEXT INFO: {extra_context}\n"
+                "Use this context to give specific advice (e.g. best crop for this location/month) if relevant. "
+                "CRITICAL: If the user explicitly mentions a different location, region, city, or month in their question, "
+                "ignore the automatically provided CONTEXT INFO's location/month and prioritize the user's requested location/month instead. "
+                "Do NOT mix the two locations, and do NOT mention the context location/month (e.g. do NOT say 'Karachi' or 'May' in your response) "
+                "if the user's question is about another place (such as Sahiwal, Punjab, etc.) or another time."
+            )
+
+        _log(
+            f"[regional] Step 1: {target_lang_readable} (incl. audio) → English question…"
+            + (" [from_audio]" if from_audio else "")
+        )
+        english_query = _translate_regional_to_english(text, target_lang_lower, primary_model, _log)
+        if not (english_query or "").strip():
+            english_query = text
+            _log("[regional] English question empty; using raw input as fallback.")
+
+        user_content = f"Answer this agricultural query in English:\n{english_query}"
+
+        english_msgs = [
+            {"role": "system", "content": english_system + "\n\n" + convo_rules},
+            {"role": "user", "content": user_content},
         ]
 
         try:
-            _log("[2-step] Step 1: Generating Urdu answer…")
-            urdu_answer = _ollama_try_models(
-                messages_factory=lambda _m: urdu_msgs,
+            _log("[regional] Step 2: Generating English answer…")
+            english_answer = _ollama_try_models(
+                messages_factory=lambda _m: english_msgs,
                 primary_model=primary_model,
                 temperature=0.4,
                 think=False,
@@ -544,19 +653,22 @@ def translate_text(
                 progress_callback=None,  # don't surface intermediate result
             )
 
-            urdu_answer = _strip_hallucinations(_strip_qwen_thinking_blocks(urdu_answer))
+            english_answer = _strip_hallucinations(_strip_qwen_thinking_blocks(english_answer))
 
-            if not urdu_answer:
+            if not english_answer:
                 return "[معذرت، مجھے آپ کی بات سمجھ نہیں آئی۔ براہ کرم دوبارہ کوشش کریں۔]"
 
-            _log(f"[2-step] Urdu answer ({len(urdu_answer)} chars): {urdu_answer[:80]}…")
+            _log(f"[regional] English answer ({len(english_answer)} chars): {english_answer[:80]}…")
 
-            # Step 2: translate Urdu → regional language
-            # Pass the original user question as context so the translation
-            # stays topically anchored to what was actually asked.
-            regional_answer = _translate_urdu_to_regional(
-                urdu_answer, target_lang_lower, primary_model, _log,
+            # Step 3: English → regional (strict script)
+            regional_answer = _translate_answer_to_regional(
+                english_answer,
+                target_lang_lower,
+                primary_model,
+                _log,
+                source_lang_name="English",
                 original_question=text,
+                english_question=english_query,
             )
 
             if progress_callback:
@@ -568,7 +680,7 @@ def translate_text(
             return _sanitize_translated_text(regional_answer)
 
         except Exception as e:
-            _log(f"[2-step] Error: {e}")
+            _log(f"[regional] Error: {e}")
             raise
 
     # ------------------------------------------------------------------
@@ -612,7 +724,14 @@ def translate_text(
         "Answer immediately in the user-facing language only."
     )
     if extra_context:
-        convo_rules += f"\n\nCONTEXT INFO: {extra_context}\nUse this context to give specific advice (e.g. best crop for this location/month) if relevant."
+        convo_rules += (
+            f"\n\nCONTEXT INFO: {extra_context}\n"
+            "Use this context to give specific advice (e.g. best crop for this location/month) if relevant. "
+            "CRITICAL: If the user explicitly mentions a different location, region, city, or month in their question, "
+            "ignore the automatically provided CONTEXT INFO's location/month and prioritize the user's requested location/month instead. "
+            "Do NOT mix the two locations, and do NOT mention the context location/month (e.g. do NOT say 'Karachi' or 'May' in your response) "
+            "if the user's question is about another place (such as Sahiwal, Punjab, etc.) or another time."
+        )
 
     def _messages(full_system: str) -> list[dict[str, str]]:
         return [
